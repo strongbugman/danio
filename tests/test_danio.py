@@ -86,13 +86,13 @@ async def test_model(database):
     await u.save()
     assert u.id > 0
     # read
-    u = (await User.get(id=u.id))[0]
-    assert u.id
+    u = await User.get(id=u.id)
+    assert u
     # read with limit
-    u = (await User.get(id=u.id, limit=1))[0]
-    assert u.id
+    u = await User.get(id=u.id)
+    assert u
     # read with order by
-    u = (await User.get(limit=1, order_by="name"))[0]
+    u = (await User.select(limit=1, order_by="name"))[0]
     assert u.id
     # count
     assert (await User.count()) == 1
@@ -101,15 +101,15 @@ async def test_model(database):
     await u.save()
     assert u.name == "admin_user"
     # read
-    u = (await User.get(id=u.id))[0]
+    u = (await User.select(id=u.id))[0]
     assert u.name == "admin_user"
     # delete
     await u.delete()
-    assert not await User.get(id=u.id)
+    assert not await User.select(id=u.id)
     # create with id
     u = User(id=101, name="test_user")
     await u.save(force_insert=True)
-    u = (await User.get(id=u.id))[0]
+    u = (await User.select(id=u.id))[0]
     assert u.name == "test_user"
 
 
@@ -133,18 +133,18 @@ async def test_shard_model(database, read_database):
     await u.save()
     assert u.id > 0
     # read
-    u = (await User.get(id=u.id))[0]
+    u = (await User.select(id=u.id))[0]
     assert u.id
     # update
     u.name = "admin_user"
     await u.save()
     assert u.name == "admin_user"
     # read
-    u = (await User.get(id=u.id))[0]
+    u = (await User.select(id=u.id))[0]
     assert u.name == "admin_user"
     # delete
     await u.delete()
-    assert not await User.get(id=u.id)
+    assert not await User.select(id=u.id)
 
 
 @pytest.mark.asyncio
@@ -178,7 +178,7 @@ async def test_bulk_operations(database):
     for i, u in enumerate(users):
         assert u.id == i + 100
     # update
-    users = await User.get()
+    users = await User.select()
     for u in users:
         u.name = "update_name"
     await User.bulk_update(users)

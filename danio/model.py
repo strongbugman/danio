@@ -1,6 +1,6 @@
 """
 Base ORM model with CRUD
-TODO: migration, page, error, signal
+TODO: migration, page, error, signal, validate
 """
 import abc
 import typing
@@ -81,10 +81,6 @@ class Model(abc.ABC):
         """Get database instance, route database by operation"""
 
     @classmethod
-    def get_fields(cls) -> typing.Tuple[str]:
-        return tuple(str(f.name) for f in dataclasses.fields(cls))
-
-    @classmethod
     def load(
         cls: typing.Type[MODEL_TV], rows: typing.List[typing.Mapping]
     ) -> typing.List[MODEL_TV]:
@@ -92,7 +88,7 @@ class Model(abc.ABC):
         return [cls(**row) for row in rows]
 
     @classmethod
-    async def get(
+    async def select(
         cls: typing.Type[MODEL_TV],
         limit: typing.Optional[int] = None,
         order_by="id",
@@ -103,9 +99,18 @@ class Model(abc.ABC):
             database = cls.get_database(cls.Operation.READ, cls.get_table_name())
         return cls.load(
             await database.select(
-                cls.get_table_name(), cls.get_fields(), limit=limit, order_by=order_by, **conditions
+                cls.get_table_name(), [f.name for f in dataclasses.fields(cls)], limit=limit, order_by=order_by, **conditions
             )
         )
+
+    @classmethod
+    async def get(
+            cls: typing.Type[MODEL_TV],
+            database: typing.Optional[Database] = None,
+            **conditions: typing.Any
+    ) -> typing.Optional[MODEL_TV]:
+        instances = await cls.select(database=database, **conditions)
+        return instances[0] if instances else None
 
     @classmethod
     async def count(
