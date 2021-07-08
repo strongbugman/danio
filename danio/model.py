@@ -1,6 +1,6 @@
 """
 Base ORM model with CRUD
-TODO: migration, page, error, signal, validate
+TODO: page, error, signal, validate
 """
 import abc
 import typing
@@ -16,6 +16,8 @@ MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 
 @dataclasses.dataclass
 class Model(abc.ABC):
+    IndexType = typing.ClassVar[typing.Tuple[typing.Tuple[str, ...], ...]]
+
     @enum.unique
     class Operation(enum.IntEnum):
         CREATE = 1
@@ -23,11 +25,21 @@ class Model(abc.ABC):
         UPDATE = 3
         DELETE = 4
 
-    TABLE_NAME_PREFIX = ""
-
-    id: int = 0
-    created_at: typing.Optional[int] = None
-    updated_at: typing.Optional[int] = None
+    id: int = 0  # "database: `id` int(11) NOT NULL AUTO_INCREMENT"
+    created_at: typing.Optional[
+        int
+    ] = None  # "database: `created_at` int(11) NOT NULL COMMENT 'when created'" TODO: post init
+    updated_at: typing.Optional[
+        int
+    ] = None  # "database: `updated_at` int(11) NOT NULL COMMENT 'when updated'"
+    # for table schema
+    __table_prefix: typing.ClassVar[str] = ""
+    __table_primary_key: typing.ClassVar[str] = id
+    __table_index_keys: IndexType = ((),)
+    __table_unique_keys: IndexType = ((),)
+    __table_abstracted: typing.ClassVar[
+        bool
+    ] = True  # do not impact subclass, default false for every class except defined as true
 
     @property
     def table_name(self) -> str:
@@ -71,7 +83,7 @@ class Model(abc.ABC):
 
     @classmethod
     def get_table_name(cls) -> str:
-        return cls.TABLE_NAME_PREFIX + cls.__name__.lower()
+        return cls.__table_prefix + cls.__name__.lower()
 
     @classmethod
     @abc.abstractmethod
@@ -99,29 +111,35 @@ class Model(abc.ABC):
             database = cls.get_database(cls.Operation.READ, cls.get_table_name())
         return cls.load(
             await database.select(
-                cls.get_table_name(), [f.name for f in dataclasses.fields(cls)], limit=limit, order_by=order_by, **conditions
+                cls.get_table_name(),
+                [f.name for f in dataclasses.fields(cls)],
+                limit=limit,
+                order_by=order_by,
+                **conditions
             )
         )
 
     @classmethod
     async def get(
-            cls: typing.Type[MODEL_TV],
-            database: typing.Optional[Database] = None,
-            **conditions: typing.Any
+        cls: typing.Type[MODEL_TV],
+        database: typing.Optional[Database] = None,
+        **conditions: typing.Any
     ) -> typing.Optional[MODEL_TV]:
         instances = await cls.select(database=database, **conditions)
         return instances[0] if instances else None
 
     @classmethod
     async def count(
-            cls: typing.Type[MODEL_TV],
-            database: typing.Optional[Database] = None,
-            **conditions: typing.Any
+        cls: typing.Type[MODEL_TV],
+        database: typing.Optional[Database] = None,
+        **conditions: typing.Any
     ) -> int:
         if not database:
             database = cls.get_database(cls.Operation.READ, cls.get_table_name())
 
-        return (await database.select(cls.get_table_name(), ("COUNT(*)",), **conditions))[0][0]
+        return (
+            await database.select(cls.get_table_name(), ("COUNT(*)",), **conditions)
+        )[0][0]
 
     @classmethod
     async def bulk_create(
