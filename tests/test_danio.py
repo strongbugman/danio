@@ -1,10 +1,12 @@
+import asyncio
+import datetime
 import dataclasses
 import typing
 
 import pymysql
 import pytest
 
-from danio import Database, Model, Schema
+from danio import Database, Model, Schema, MODEL_TV
 
 
 db = Database(
@@ -27,6 +29,34 @@ db_name = "test_danio"
 @dataclasses.dataclass
 class User(Model):
     name: str = ""  # "database: `name` varchar(255) NOT NULL COMMENT 'User name'"
+    created_at: datetime.datetime = datetime.datetime.utcfromtimestamp(
+        0
+    )  # "database: `created_at` datetime NOT NULL COMMENT 'when created'"
+    updated_at: datetime.datetime = datetime.datetime.utcfromtimestamp(
+        0
+    )  # "database: `updated_at` datetime NOT NULL COMMENT 'when updated'"
+
+    def __post_init__(self):
+        if self.created_at.ctime() == "Thu Jan  1 00:00:00 1970":
+            self.created_at = datetime.datetime.utcnow()
+        if self.updated_at.ctime() == "Thu Jan  1 00:00:00 1970":
+            self.updated_at = self.created_at
+
+    async def save(
+        self, database: typing.Optional[Database] = None, force_insert=False
+    ):
+        self.updated_at = datetime.datetime.utcnow()
+        await super().save(database=database, force_insert=force_insert)
+
+    @classmethod
+    async def bulk_update(
+        cls,
+        instances: typing.Iterator["User"],
+        database: typing.Optional[Database] = None,
+    ):
+        for i in instances:
+            i.updated_at = datetime.datetime.utcnow()
+        await super().bulk_update(instances, database=database)
 
     @classmethod
     def get_database(
@@ -66,7 +96,9 @@ async def test_database():
 async def test_model():
     # create
     u = User(name="test_user")
+    await asyncio.sleep(0.1)
     await u.save()
+    assert u.updated_at > u.created_at
     assert u.id > 0
     # read
     u = await User.get(id=u.id)
@@ -165,3 +197,13 @@ async def test_schema():
 
     assert not Schema.generate(BaseUserBackpack)
     assert Schema.generate(BaseUserBackpack, force=True)
+    # disable fields
+
+    @dataclasses.dataclass
+    class UserBackpack(BaseUserBackpack):
+        id: int = 0  # using pk rather than id
+        pk: int = 0  # "database: `pk` int(11) NOT NULL AUTO_INCREMENT"
+
+        __table_primary_key: typing.ClassVar[str] = pk
+
+    await db.execute(Schema.generate(UserBackpack))

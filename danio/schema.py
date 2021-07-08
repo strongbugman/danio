@@ -72,6 +72,8 @@ class Schema:
                     )
                     if ans:
                         fields[a.target.id] = ans[0]
+                    else:
+                        fields[a.target.id] = ""
 
         return fields, primary_key, unique_keys, index_keys, abstracted
 
@@ -126,7 +128,7 @@ class Schema:
             )
         for ks in itertools.chain(unique_keys, index_keys):
             for k in ks:
-                if k not in fields:
+                if k not in fields or not fields[k]:
                     raise ValueError(f"Miss key {k} in table {m.get_table_name()}")
         # keys
         keys = [f"PRIMARY KEY (`{primary_key}`)"]
@@ -138,7 +140,7 @@ class Schema:
         else:
             return (
                 f"CREATE TABLE `{m.get_table_name()}` (\n"
-                + ",\n".join(itertools.chain(fields.values(), keys))
+                + ",\n".join(itertools.chain((v for v in fields.values() if v), keys))
                 + f"\n) {cls.POSTFIX}"
             )
 

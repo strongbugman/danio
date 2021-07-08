@@ -5,7 +5,6 @@ TODO: page, error, signal, validate
 import abc
 import typing
 import dataclasses
-import time
 import enum
 
 from .database import Database
@@ -26,12 +25,6 @@ class Model(abc.ABC):
         DELETE = 4
 
     id: int = 0  # "database: `id` int(11) NOT NULL AUTO_INCREMENT"
-    created_at: typing.Optional[
-        int
-    ] = None  # "database: `created_at` int(11) NOT NULL COMMENT 'when created'" TODO: post init
-    updated_at: typing.Optional[
-        int
-    ] = None  # "database: `updated_at` int(11) NOT NULL COMMENT 'when updated'"
     # for table schema
     __table_prefix: typing.ClassVar[str] = ""
     __table_primary_key: typing.ClassVar[str] = id
@@ -52,9 +45,6 @@ class Model(abc.ABC):
     async def save(
         self, database: typing.Optional[Database] = None, force_insert=False
     ):
-        if not self.created_at:
-            self.created_at = int(time.time())
-        self.updated_at = int(time.time())
         data = self.dump()
         data.pop("id")
         if self.id and not force_insert:
@@ -152,9 +142,6 @@ class Model(abc.ABC):
 
         data = []
         for i in instances:
-            if not i.created_at:
-                i.created_at = int(time.time())
-            i.updated_at = int(time.time())
             data.append(i.dump())
             if not i.id:
                 data[-1].pop("id")
@@ -179,7 +166,6 @@ class Model(abc.ABC):
         for i in instances:
             if not i.id:
                 raise ValueError("Update with empty ID")
-            i.updated_at = int(time.time())
             data.append(i.dump())
 
         await database.update(
