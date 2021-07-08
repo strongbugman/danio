@@ -1,6 +1,5 @@
 """
 Base ORM model with CRUD
-TODO: page, error, signal, validate
 """
 import abc
 import typing
@@ -42,9 +41,17 @@ class Model(abc.ABC):
         """Dump dataclass to DB level dict"""
         return dataclasses.asdict(self)
 
+    def validate(self):
+        pass
+
     async def save(
-        self, database: typing.Optional[Database] = None, force_insert=False
+        self,
+        database: typing.Optional[Database] = None,
+        force_insert=False,
+        validate=True,
     ):
+        if validate:
+            self.validate()
         data = self.dump()
         data.pop("id")
         if self.id and not force_insert:
@@ -136,9 +143,13 @@ class Model(abc.ABC):
         cls: typing.Type[MODEL_TV],
         instances: typing.Iterator[MODEL_TV],
         database: typing.Optional[Database] = None,
+        validate=True,
     ) -> typing.Iterator[MODEL_TV]:
         if not database:
             database = cls.get_database(cls.Operation.CREATE, cls.get_table_name())
+        if validate:
+            for i in instances:
+                i.validate()
 
         data = []
         for i in instances:
@@ -158,9 +169,13 @@ class Model(abc.ABC):
         cls: typing.Type[MODEL_TV],
         instances: typing.Iterator[MODEL_TV],
         database: typing.Optional[Database] = None,
+        validate=True,
     ):
         if not database:
             database = cls.get_database(cls.Operation.CREATE, cls.get_table_name())
+        if validate:
+            for i in instances:
+                i.validate()
 
         data = []
         for i in instances:

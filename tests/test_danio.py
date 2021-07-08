@@ -42,8 +42,15 @@ class User(Model):
         if self.updated_at.ctime() == "Thu Jan  1 00:00:00 1970":
             self.updated_at = self.created_at
 
+    def validate(self):
+        if not self.name:
+            raise ValueError("Empty name!")
+
     async def save(
-        self, database: typing.Optional[Database] = None, force_insert=False
+        self,
+        database: typing.Optional[Database] = None,
+        force_insert=False,
+        validate=True,
     ):
         self.updated_at = datetime.datetime.utcnow()
         await super().save(database=database, force_insert=force_insert)
@@ -53,6 +60,7 @@ class User(Model):
         cls,
         instances: typing.Iterator["User"],
         database: typing.Optional[Database] = None,
+        validate=True,
     ):
         for i in instances:
             i.updated_at = datetime.datetime.utcnow()
