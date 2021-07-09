@@ -9,6 +9,7 @@ from importlib import import_module
 from pkgutil import iter_modules
 
 from .model import Model
+from .exception import SchemaException
 
 
 class Schema:
@@ -47,12 +48,14 @@ class Schema:
                     primary_key = a.value.id
                 elif a.target.id in ["__table_unique_keys", "__table_index_keys"]:
                     if not isinstance(a.value, ast.Tuple):
-                        raise ValueError("KEYS type should be type.Tuple[type.Tuple[]]")
+                        raise SchemaException(
+                            "KEYS type should be type.Tuple[type.Tuple[]]"
+                        )
                     keys = []
                     for sub in a.value.elts:
                         _keys = []
                         if not isinstance(sub, ast.Tuple):
-                            raise ValueError(
+                            raise SchemaException(
                                 "KEYS type should be type.Tuple[type.Tuple[]]"
                             )
                         for e in sub.elts:
@@ -63,7 +66,7 @@ class Schema:
                             elif isinstance(e, ast.Attribute):
                                 _keys.append(e.attr)
                             else:
-                                raise ValueError(
+                                raise SchemaException(
                                     f"{m.get_table_name()} key type not support"
                                 )
                         keys.append(_keys)
@@ -75,7 +78,7 @@ class Schema:
                             index_keys = keys
                 elif a.target.id == "__table_abstracted":
                     if not isinstance(a.value, ast.Constant):
-                        raise ValueError(f"__table_abstracted should be constant")
+                        raise SchemaException(f"__table_abstracted should be constant")
                     abstracted = bool(a.value.value)
                 else:
                     ans = cls.FIELD_PATTERN.findall(
@@ -130,17 +133,17 @@ class Schema:
         # check
         miss_fields = set(f.name for f in dataclasses.fields(m)) - set(fields.keys())
         if miss_fields:
-            raise ValueError(
+            raise SchemaException(
                 f"Miss fields: {miss_fields} in table {m.get_table_name()}"
             )
         if primary_key not in fields:
-            raise ValueError(
+            raise SchemaException(
                 f"Miss primary key {primary_key} in table {m.get_table_name()}"
             )
         for ks in itertools.chain(unique_keys, index_keys):
             for k in ks:
                 if k not in fields or not fields[k]:
-                    raise ValueError(f"Miss key {k} in table {m.get_table_name()}")
+                    raise SchemaException(f"Miss key {k} in table {m.get_table_name()}")
         # keys
         keys = [f"PRIMARY KEY (`{primary_key}`)"]
         keys.extend(cls.generate_keys(index_keys))

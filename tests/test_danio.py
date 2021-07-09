@@ -6,7 +6,7 @@ import typing
 import pymysql
 import pytest
 
-from danio import Database, Model, Schema, MODEL_TV
+from danio import Database, Model, Schema, ValidateException
 
 
 db = Database(
@@ -44,7 +44,7 @@ class User(Model):
 
     def validate(self):
         if not self.name:
-            raise ValueError("Empty name!")
+            raise ValidateException("Empty name!")
 
     async def save(
         self,
