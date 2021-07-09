@@ -48,16 +48,27 @@ class Schema:
                 elif a.target.id in ["__table_unique_keys", "__table_index_keys"]:
                     if not isinstance(a.value, ast.Tuple):
                         raise ValueError("KEYS type should be type.Tuple[type.Tuple[]]")
-                    for t in a.value.elts:
-                        if not isinstance(t, ast.Tuple):
+                    keys = []
+                    for sub in a.value.elts:
+                        _keys = []
+                        if not isinstance(sub, ast.Tuple):
                             raise ValueError(
                                 "KEYS type should be type.Tuple[type.Tuple[]]"
                             )
-                    keys = [
-                        [e.id if isinstance(e, ast.Name) else e.attr for e in t.elts]
-                        for t in a.value.elts
-                    ]
-                    if keys and keys[0]:
+                        for e in sub.elts:
+                            if isinstance(e, ast.Name):
+                                _keys.append(e.id)
+                            elif isinstance(e, ast.Constant):
+                                _keys.append(e.value)
+                            elif isinstance(e, ast.Attribute):
+                                _keys.append(e.attr)
+                            else:
+                                raise ValueError(
+                                    f"{m.get_table_name()} key type not support"
+                                )
+                        keys.append(_keys)
+
+                    if any(itertools.chain(*keys)):
                         if "unique" in a.target.id:
                             unique_keys = keys
                         else:

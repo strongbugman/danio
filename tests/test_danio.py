@@ -181,10 +181,9 @@ async def test_schema():
                 User.created_at,
                 User.updated_at,
             ),
-            (level,),
+            ("level",),
         )
 
-    # generate
     await db.execute(Schema.generate(UserProfile))
     assert not (await UserProfile.select())
     assert (
