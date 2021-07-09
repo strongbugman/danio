@@ -42,21 +42,21 @@ class Schema:
         for i, l in enumerate(codes):
             codes[i] = l[_indentation_counts:]
         # parse and get table field and key
-        for a in ast.parse("".join(codes)).body[0].body:
+        for a in ast.parse("".join(codes)).body[0].body:  # type: ignore
             if isinstance(a, ast.AnnAssign):
-                if a.target.id == "__table_primary_key":
-                    primary_key = a.value.id
-                elif a.target.id in ["__table_unique_keys", "__table_index_keys"]:
+                if a.target.id == "__table_primary_key":  # type: ignore
+                    primary_key = a.value.id  # type: ignore
+                elif a.target.id in ["__table_unique_keys", "__table_index_keys"]:  # type: ignore
                     if not isinstance(a.value, ast.Tuple):
                         raise SchemaException(
-                            "KEYS type should be type.Tuple[type.Tuple[]]"
+                            f"{m.get_table_name()}: KEYS type should be type.Tuple[type.Tuple[]]"
                         )
                     keys = []
                     for sub in a.value.elts:
                         _keys = []
                         if not isinstance(sub, ast.Tuple):
                             raise SchemaException(
-                                "KEYS type should be type.Tuple[type.Tuple[]]"
+                                f"{m.get_table_name()}: KEYS type should be type.Tuple[type.Tuple[]]"
                             )
                         for e in sub.elts:
                             if isinstance(e, ast.Name):
@@ -72,22 +72,24 @@ class Schema:
                         keys.append(_keys)
 
                     if any(itertools.chain(*keys)):
-                        if "unique" in a.target.id:
+                        if "unique" in a.target.id:  # type: ignore
                             unique_keys = keys
                         else:
                             index_keys = keys
-                elif a.target.id == "__table_abstracted":
+                elif a.target.id == "__table_abstracted":  # type: ignore
                     if not isinstance(a.value, ast.Constant):
-                        raise SchemaException(f"__table_abstracted should be constant")
+                        raise SchemaException(
+                            f"{m.get_table_name()}: __table_abstracted should be constant"
+                        )
                     abstracted = bool(a.value.value)
                 else:
                     ans = cls.FIELD_PATTERN.findall(
                         "".join(codes[a.lineno - 1 : a.end_lineno])
                     )
                     if ans:
-                        fields[a.target.id] = ans[0]
+                        fields[a.target.id] = ans[0]  # type: ignore
                     else:
-                        fields[a.target.id] = ""
+                        fields[a.target.id] = ""  # type: ignore
 
         return fields, primary_key, unique_keys, index_keys, abstracted
 

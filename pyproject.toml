@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "danio"
 version = "0.1.0"
-description = "ORM"
-authors = ["MingyuWu <mingyu.wu@garena.cn>"]
+description = "Lightly ORM"
+authors = ["strongbugman <strongbugman@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
@@ -13,6 +13,8 @@ pytest = "^4.6"
 pytest-asyncio = ">=0.8.0"
 pytest-cov = ">=2.5.1"
 aiomysql = "^0.0.21"
+mypy = "^0.910"
+flake8 = "^3.9.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

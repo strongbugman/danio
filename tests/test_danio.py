@@ -175,8 +175,8 @@ async def test_schema():
         level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
         coins: int = 0  # "database: `coins` int(10) NOT NULL COMMENT 'User coins'"
 
-        __table_unique_keys: Model.IndexType = ((user_id,),)
-        __table_index_keys: Model.IndexType = (
+        __table_unique_keys: typing.ClassVar = ((user_id,),)
+        __table_index_keys: typing.ClassVar = (
             (
                 User.created_at,
                 User.updated_at,

@@ -1,7 +1,6 @@
 """
 Base ORM model with CRUD
 """
-import abc
 import typing
 import dataclasses
 import enum
@@ -13,9 +12,7 @@ MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 
 
 @dataclasses.dataclass
-class Model(abc.ABC):
-    IndexType = typing.ClassVar[typing.Tuple[typing.Tuple[str, ...], ...]]
-
+class Model:
     @enum.unique
     class Operation(enum.IntEnum):
         CREATE = 1
@@ -26,9 +23,13 @@ class Model(abc.ABC):
     id: int = 0  # "database: `id` int(11) NOT NULL AUTO_INCREMENT"
     # for table schema
     __table_prefix: typing.ClassVar[str] = ""
-    __table_primary_key: typing.ClassVar[str] = id
-    __table_index_keys: IndexType = ((),)
-    __table_unique_keys: IndexType = ((),)
+    __table_primary_key: typing.ClassVar[typing.Any] = id
+    __table_index_keys: typing.ClassVar[
+        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
+    ] = ((),)
+    __table_unique_keys: typing.ClassVar[
+        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
+    ] = ((),)
     __table_abstracted: typing.ClassVar[
         bool
     ] = True  # do not impact subclass, default false for every class except defined as true
@@ -83,7 +84,6 @@ class Model(abc.ABC):
         return cls.__table_prefix + cls.__name__.lower()
 
     @classmethod
-    @abc.abstractmethod
     def get_database(
         cls, operation: Operation, table: str, *args, **kwargs
     ) -> Database:
@@ -148,13 +148,12 @@ class Model(abc.ABC):
         if not database:
             database = cls.get_database(cls.Operation.CREATE, cls.get_table_name())
         if validate:
-            for i in instances:
-                i.validate()
+            map(lambda ins: ins.validate(), instances)
 
         data = []
-        for i in instances:
-            data.append(i.dump())
-            if not i.id:
+        for ins in instances:
+            data.append(ins.dump())
+            if not ins.id:
                 data[-1].pop("id")
 
         fist_id = await database.insert(cls.get_table_name(), data)
