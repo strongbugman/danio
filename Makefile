@@ -15,6 +15,7 @@ tag: install
 	git tag $(version) -m "Release of version $(version)"
 
 pypi_release: install
+	poetry build
 	poetry publish
 
 github_release:

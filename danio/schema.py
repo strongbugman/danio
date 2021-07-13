@@ -103,7 +103,7 @@ class Schema:
                 continue
             row_keys.append(
                 f"{'UNIQUE ' if unique else ''}KEY "
-                f"`{'_'.join(ks)[:15]}_{random.randint(1, 10000)} ({'_uiq' if unique else '_idx'})` "
+                f"`{'_'.join(ks)[:15]}_{random.randint(1, 10000)}({'_uiq' if unique else '_idx'})` "
                 f"({', '.join(f'`{k}`' for k in ks)})"
             )
 
@@ -161,10 +161,15 @@ class Schema:
             )
 
     @classmethod
-    def generate_all(cls, paths: typing.List[str]) -> str:
+    def generate_all(cls, paths: typing.List[str], database="") -> str:
         """Generate all orm table by package path"""
         modules = []
         results = []
+        if database:
+            results.append(
+                f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            )
+            results.append(f"USE `{database}`;")
         # get all modules from packages and subpackages
         for path in paths:
             module: typing.Any = import_module(path)
