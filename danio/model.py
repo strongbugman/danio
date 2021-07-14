@@ -45,14 +45,24 @@ class Model:
     def validate(self):
         pass
 
+    async def before_save(self):
+        self.validate()
+
+    async def after_save(self):
+        pass
+
+    async def before_delete(self):
+        pass
+
+    async def after_delete(self):
+        pass
+
     async def save(
         self,
         database: typing.Optional[Database] = None,
         force_insert=False,
-        validate=True,
     ):
-        if validate:
-            self.validate()
+        await self.before_save()
         data = self.dump()
         data.pop("id")
         if self.id and not force_insert:
@@ -71,13 +81,16 @@ class Model:
             elif not self.id and force_insert:
                 raise ValueError("Force insert with zero id")
             self.id = await database.insert(self.table_name, (data,))
+        await self.after_save()
 
     async def delete(self, database: typing.Optional[Database] = None):
         if not database:
             database = self.__class__.get_database(
                 self.Operation.DELETE, self.table_name
             )
+        await self.before_delete()
         await database.delete(self.table_name, id=self.id)
+        await self.after_delete()
 
     @classmethod
     def get_table_name(cls) -> str:
@@ -143,12 +156,11 @@ class Model:
         cls: typing.Type[MODEL_TV],
         instances: typing.Iterator[MODEL_TV],
         database: typing.Optional[Database] = None,
-        validate=True,
     ) -> typing.Iterator[MODEL_TV]:
         if not database:
             database = cls.get_database(cls.Operation.CREATE, cls.get_table_name())
-        if validate:
-            map(lambda ins: ins.validate(), instances)
+        for ins in instances:
+            await ins.before_save()
 
         data = []
         for ins in instances:
@@ -161,6 +173,8 @@ class Model:
             if not ins.id:
                 ins.id = fist_id + i
 
+        for ins in instances:
+            await ins.after_save()
         return instances
 
     @classmethod
@@ -172,9 +186,8 @@ class Model:
     ):
         if not database:
             database = cls.get_database(cls.Operation.CREATE, cls.get_table_name())
-        if validate:
-            for i in instances:
-                i.validate()
+        for ins in instances:
+            await ins.before_save()
 
         data = []
         for i in instances:
@@ -185,3 +198,6 @@ class Model:
         await database.update(
             cls.get_table_name(), data, [{"id": i.id} for i in instances]
         )
+
+        for ins in instances:
+            await ins.after_save()
