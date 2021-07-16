@@ -35,35 +35,15 @@ class User(Model):
         0
     )  # "database: `updated_at` datetime NOT NULL COMMENT 'when updated'"
 
-    def __post_init__(self):
+    async def before_save(self):
+        self.updated_at = datetime.datetime.utcnow()
         if self.created_at.ctime() == "Thu Jan  1 00:00:00 1970":
-            self.created_at = datetime.datetime.utcnow()
-        if self.updated_at.ctime() == "Thu Jan  1 00:00:00 1970":
-            self.updated_at = self.created_at
+            self.created_at = self.updated_at
+        await super().before_save()
 
     def validate(self):
         if not self.name:
             raise ValidateException("Empty name!")
-
-    async def save(
-        self,
-        database: typing.Optional[Database] = None,
-        force_insert=False,
-        validate=True,
-    ):
-        self.updated_at = datetime.datetime.utcnow()
-        await super().save(database=database, force_insert=force_insert)
-
-    @classmethod
-    async def bulk_update(
-        cls,
-        instances: typing.Iterator["User"],
-        database: typing.Optional[Database] = None,
-        validate=True,
-    ):
-        for i in instances:
-            i.updated_at = datetime.datetime.utcnow()
-        await super().bulk_update(instances, database=database)
 
     @classmethod
     def get_database(
@@ -105,7 +85,7 @@ async def test_model():
     u = User(name="test_user")
     await asyncio.sleep(0.1)
     await u.save()
-    assert u.updated_at > u.created_at
+    assert u.updated_at >= u.created_at
     assert u.id > 0
     # read
     u = await User.get(id=u.id)
