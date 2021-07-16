@@ -1,13 +1,12 @@
 import asyncio
-import datetime
 import dataclasses
+import datetime
 import typing
 
 import pymysql
 import pytest
 
 from danio import Database, Model, Schema, ValidateException
-
 
 db = Database(
     "mysql://root:app@localhost:3306/",

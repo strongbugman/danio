@@ -1,7 +1,7 @@
 from .database import Database
-from .model import Model, MODEL_TV
-from .schema import Schema
 from .exception import SchemaException, ValidateException
+from .model import MODEL_TV, Model
+from .schema import Schema
 
 __all__ = (
     "Database",

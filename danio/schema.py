@@ -8,8 +8,8 @@ import typing
 from importlib import import_module
 from pkgutil import iter_modules
 
-from .model import Model
 from .exception import SchemaException
+from .model import Model
 
 
 class Schema:

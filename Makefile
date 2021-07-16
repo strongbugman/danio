@@ -7,6 +7,7 @@ install:
 
 test: install
 	black . --check
+	isort -c danio
 	flake8 .
 	mypy --ignore-missing-imports danio
 	pytest --cov danio --cov-report term-missing

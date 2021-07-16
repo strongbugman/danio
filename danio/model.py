@@ -1,12 +1,11 @@
 """
 Base ORM model with CRUD
 """
-import typing
 import dataclasses
 import enum
+import typing
 
 from .database import Database
-
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 
