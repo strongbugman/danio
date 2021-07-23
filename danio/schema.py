@@ -165,6 +165,7 @@ class Schema:
         """Generate all orm table by package path"""
         modules = []
         results = []
+        models = set()
         if database:
             results.append(
                 f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
@@ -191,7 +192,9 @@ class Schema:
                     isinstance(obj, type)
                     and issubclass(obj, Model)
                     and obj is not Model
+                    and obj not in models
                 ):
                     results.append(cls.generate(obj))
+                    models.add(obj)
 
         return "\n".join(results)
