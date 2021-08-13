@@ -1,4 +1,5 @@
 import ast
+import contextlib
 import dataclasses
 import inspect
 import itertools
@@ -11,26 +12,57 @@ from pkgutil import iter_modules
 from .exception import SchemaException
 from .model import Model
 
+SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 
+
+@dataclasses.dataclass
+class Field:
+    name: str
+    db_name: str
+    describe: str
+
+
+@dataclasses.dataclass
+class Index:
+    fields: typing.List[Field]
+
+
+@dataclasses.dataclass
 class Schema:
-    POSTFIX = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-    FIELD_PATTERN = re.compile(r"\"database: (.*)\"")
+    POSTFIX: typing.ClassVar[
+        str
+    ] = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+    FIELD_PATTERN: typing.ClassVar = re.compile(r"\"database: (.*)\"")
+
+    name: str
+    fields: typing.Dict[str, Field]
+    primary_field: Field
+    indexes: typing.List[Index]
+    unique_indexes: typing.List[Index]
+    abstracted: bool
+
+    def to_sql(self) -> str:
+        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
+        keys.extend(self.__class__.generate_keys(self.indexes))
+        keys.extend(self.__class__.generate_keys(self.unique_indexes, unique=True))
+
+        return (
+            f"CREATE TABLE `{self.name}` (\n"
+            + ",\n".join(
+                itertools.chain((v.describe for v in self.fields.values()), keys)
+            )
+            + f"\n) {self.POSTFIX}"
+        )
 
     @classmethod
     def _generate(
-        cls, m: typing.Type[Model]
-    ) -> typing.Tuple[
-        typing.Dict[str, str],
-        str,
-        typing.List[typing.List[str]],
-        typing.List[typing.List[str]],
-        bool,
-    ]:
-        fields: typing.Dict[str, str] = {}
+        cls: typing.Type[SCHEMA_TV], m: typing.Type[Model], schema: SCHEMA_TV
+    ) -> SCHEMA_TV:
+        schema.name = m.get_table_name()
+        schema.abstracted = False
         primary_key = ""
         unique_keys: typing.List[typing.List[str]] = []
         index_keys: typing.List[typing.List[str]] = []
-        abstracted = False
         # get source code
         codes = inspect.getsourcelines(m)[0]
         _indentation_counts = 0
@@ -81,84 +113,69 @@ class Schema:
                         raise SchemaException(
                             f"{m.get_table_name()}: __table_abstracted should be constant"
                         )
-                    abstracted = bool(a.value.value)
+                    schema.abstracted = bool(a.value.value)
                 else:
                     ans = cls.FIELD_PATTERN.findall(
                         "".join(codes[a.lineno - 1 : a.end_lineno])
                     )
                     if ans:
-                        fields[a.target.id] = ans[0]  # type: ignore
+                        schema.fields[a.target.id] = Field(name=a.target.id, db_name="", describe=ans[0])  # type: ignore
                     else:
-                        fields[a.target.id] = ""  # type: ignore
+                        with contextlib.suppress(KeyError):
+                            schema.fields.pop(a.target.id)  # type: ignore
 
-        return fields, primary_key, unique_keys, index_keys, abstracted
+        try:
+            if primary_key:
+                schema.primary_field = schema.fields[primary_key]
+            if index_keys:
+                schema.indexes.clear()
+                schema.indexes = [
+                    Index(fields=[schema.fields[key] for key in keys])
+                    for keys in index_keys
+                ]
+            if unique_keys:
+                schema.unique_indexes.clear()
+                schema.unique_indexes = [
+                    Index(fields=[schema.fields[key] for key in keys])
+                    for keys in unique_keys
+                ]
+        except KeyError as e:
+            raise SchemaException(f"{schema.name}: missing field") from e
+
+        return schema
 
     @classmethod
     def generate_keys(
-        cls, keys: typing.List[typing.List[str]], unique=False
+        cls, indexes: typing.List[Index], unique=False
     ) -> typing.List[str]:
         row_keys = []
-        for ks in keys:
-            if not ks:
-                continue
+        for index in indexes:
             row_keys.append(
                 f"{'UNIQUE ' if unique else ''}KEY "
-                f"`{'_'.join(ks)[:15]}_{random.randint(1, 10000)}({'_uiq' if unique else '_idx'})` "
-                f"({', '.join(f'`{k}`' for k in ks)})"
+                f"`{'_'.join(f.name for f in index.fields)[:15]}_{random.randint(1, 10000)}({'_uiq' if unique else '_idx'})` "
+                f"({', '.join(f'`{f.name}`' for f in index.fields)})"
             )
 
         return row_keys
 
     @classmethod
     def generate(cls, m: typing.Type[Model], force=False) -> str:
-        fields = {}
-        primary_key = ""
-        unique_keys: typing.List[typing.List[str]] = []
-        index_keys: typing.List[typing.List[str]] = []
-        abstracted = False
+        schema = cls(
+            name=m.get_table_name(),
+            fields={},
+            primary_field=Field(name="", describe="", db_name=""),
+            indexes=[],
+            unique_indexes=[],
+            abstracted=False,
+        )
+
         for _m in m.mro()[::-1]:
             if issubclass(_m, Model):
-                (
-                    _fields,
-                    _primary_key,
-                    _unique_keys,
-                    _index_keys,
-                    abstracted,
-                ) = cls._generate(_m)
-                fields.update(_fields)
-                if _primary_key:
-                    primary_key = _primary_key
-                if _unique_keys:
-                    unique_keys = _unique_keys
-                if _index_keys:
-                    index_keys = _index_keys
-        # check
-        miss_fields = set(f.name for f in dataclasses.fields(m)) - set(fields.keys())
-        if miss_fields:
-            raise SchemaException(
-                f"Miss fields: {miss_fields} in table {m.get_table_name()}"
-            )
-        if primary_key not in fields:
-            raise SchemaException(
-                f"Miss primary key {primary_key} in table {m.get_table_name()}"
-            )
-        for ks in itertools.chain(unique_keys, index_keys):
-            for k in ks:
-                if k not in fields or not fields[k]:
-                    raise SchemaException(f"Miss key {k} in table {m.get_table_name()}")
-        # keys
-        keys = [f"PRIMARY KEY (`{primary_key}`)"]
-        keys.extend(cls.generate_keys(index_keys))
-        keys.extend(cls.generate_keys(unique_keys, unique=True))
-
-        if abstracted and not force:
+                schema = cls._generate(_m, schema)
+        if schema.abstracted and not force:
             return ""
         else:
-            return (
-                f"CREATE TABLE `{m.get_table_name()}` (\n"
-                + ",\n".join(itertools.chain((v for v in fields.values() if v), keys))
-                + f"\n) {cls.POSTFIX}"
-            )
+            return schema.to_sql()
 
     @classmethod
     def generate_all(cls, paths: typing.List[str], database="") -> str:
