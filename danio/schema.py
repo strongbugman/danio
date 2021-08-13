@@ -32,7 +32,8 @@ class Schema:
     POSTFIX: typing.ClassVar[
         str
     ] = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-    FIELD_PATTERN: typing.ClassVar = re.compile(r"\"database: (.*)\"")
+    FIELD_DESCRIBE_PATTERN: typing.ClassVar = re.compile(r"\"database: (.*)\"")
+    FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"^`(.*)`")
 
     name: str
     fields: typing.Dict[str, Field]
@@ -43,8 +44,8 @@ class Schema:
 
     def to_sql(self) -> str:
         keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
-        keys.extend(self.__class__.generate_keys(self.indexes))
-        keys.extend(self.__class__.generate_keys(self.unique_indexes, unique=True))
+        keys.extend(self.__class__.generate_indexes(self.indexes))
+        keys.extend(self.__class__.generate_indexes(self.unique_indexes, unique=True))
 
         return (
             f"CREATE TABLE `{self.name}` (\n"
@@ -55,7 +56,7 @@ class Schema:
         )
 
     @classmethod
-    def _generate(
+    def _parse(
         cls: typing.Type[SCHEMA_TV], m: typing.Type[Model], schema: SCHEMA_TV
     ) -> SCHEMA_TV:
         schema.name = m.get_table_name()
@@ -76,8 +77,10 @@ class Schema:
         # parse and get table field and key
         for a in ast.parse("".join(codes)).body[0].body:  # type: ignore
             if isinstance(a, ast.AnnAssign):
+                # primary key
                 if a.target.id == "__table_primary_key":  # type: ignore
                     primary_key = a.value.id  # type: ignore
+                # index
                 elif a.target.id in ["__table_unique_keys", "__table_index_keys"]:  # type: ignore
                     if not isinstance(a.value, ast.Tuple):
                         raise SchemaException(
@@ -108,18 +111,39 @@ class Schema:
                             unique_keys = keys
                         else:
                             index_keys = keys
+                # abstract
                 elif a.target.id == "__table_abstracted":  # type: ignore
                     if not isinstance(a.value, ast.Constant):
                         raise SchemaException(
                             f"{m.get_table_name()}: __table_abstracted should be constant"
                         )
                     schema.abstracted = bool(a.value.value)
+                # field
                 else:
-                    ans = cls.FIELD_PATTERN.findall(
+                    ans = cls.FIELD_DESCRIBE_PATTERN.findall(
                         "".join(codes[a.lineno - 1 : a.end_lineno])
                     )
                     if ans:
-                        schema.fields[a.target.id] = Field(name=a.target.id, db_name="", describe=ans[0])  # type: ignore
+                        try:
+                            field_name = a.target.id  # type: ignore
+                            describe: str = ans[0]
+                            field_db_name = cls.FIELD_DBNAME_PATTERN.findall(describe)[
+                                0
+                            ]
+                            if field_db_name == "{}":
+                                field_db_name = field_name
+                                describe = describe.replace(
+                                    "`{name}`", f"`{field_db_name}`"
+                                )
+                            schema.fields[field_name] = Field(
+                                name=field_name,
+                                db_name=field_db_name,
+                                describe=describe,
+                            )
+                        except IndexError as e:
+                            raise SchemaException(
+                                f"{schema.name}: can't find field db name"
+                            ) from e
                     else:
                         with contextlib.suppress(KeyError):
                             schema.fields.pop(a.target.id)  # type: ignore
@@ -145,7 +169,7 @@ class Schema:
         return schema
 
     @classmethod
-    def generate_keys(
+    def generate_indexes(
         cls, indexes: typing.List[Index], unique=False
     ) -> typing.List[str]:
         row_keys = []
@@ -159,7 +183,7 @@ class Schema:
         return row_keys
 
     @classmethod
-    def generate(cls, m: typing.Type[Model], force=False) -> str:
+    def parse(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
         schema = cls(
             name=m.get_table_name(),
             fields={},
@@ -171,11 +195,9 @@ class Schema:
 
         for _m in m.mro()[::-1]:
             if issubclass(_m, Model):
-                schema = cls._generate(_m, schema)
-        if schema.abstracted and not force:
-            return ""
-        else:
-            return schema.to_sql()
+                schema = cls._parse(_m, schema)
+
+        return schema
 
     @classmethod
     def generate_all(cls, paths: typing.List[str], database="") -> str:
@@ -211,7 +233,9 @@ class Schema:
                     and obj is not Model
                     and obj not in models
                 ):
-                    results.append(cls.generate(obj))
                     models.add(obj)
+                    schema = cls.parse(obj)
+                    if not schema.abstracted:
+                        results.append(cls.parse(obj).to_sql())
 
         return "\n".join(results)

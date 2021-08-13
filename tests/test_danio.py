@@ -64,7 +64,7 @@ async def database():
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         )
         await db.execute(f"USE `{db_name}`;")
-        await db.execute(Schema.generate(User))
+        await db.execute(Schema.parse(User).to_sql())
         await read_db.execute(f"USE `{db_name}`;")
         yield db
     finally:
@@ -163,7 +163,7 @@ async def test_schema():
             ("level",),
         )
 
-    await db.execute(Schema.generate(UserProfile))
+    await db.execute(Schema.parse(UserProfile).to_sql())
     assert not (await UserProfile.select())
     assert (
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
@@ -181,8 +181,8 @@ async def test_schema():
 
         __table_abstracted: typing.ClassVar[bool] = True
 
-    assert not Schema.generate(BaseUserBackpack)
-    assert Schema.generate(BaseUserBackpack, force=True)
+    assert Schema.parse(BaseUserBackpack).abstracted
+    assert Schema.parse(BaseUserBackpack).to_sql()
     # disable fields
 
     @dataclasses.dataclass
@@ -192,4 +192,15 @@ async def test_schema():
 
         __table_primary_key: typing.ClassVar[str] = pk
 
-    await db.execute(Schema.generate(UserBackpack))
+    # db name
+    @dataclasses.dataclass
+    class UserBackpack2(BaseUserBackpack):
+        user_id: int = 0  # "database: `user_id2` int(10) NOT NULL COMMENT 'User ID'"
+        weight: int = (
+            0  # "database: `{name}` int(10) NOT NULL COMMENT 'backpack weight'"
+        )
+
+    sql = Schema.parse(UserBackpack2).to_sql()
+    assert "user_id2" in sql
+    assert "weight" in sql
+    await db.execute(Schema.parse(UserBackpack2).to_sql())
