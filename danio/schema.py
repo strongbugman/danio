@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import contextlib
 import dataclasses
@@ -11,6 +13,9 @@ from pkgutil import iter_modules
 
 from .exception import SchemaException
 from .model import Model
+
+if typing.TYPE_CHECKING:
+    from .database import Database
 
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 
@@ -41,19 +46,7 @@ class Schema:
     indexes: typing.List[Index]
     unique_indexes: typing.List[Index]
     abstracted: bool
-
-    def to_sql(self) -> str:
-        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
-        keys.extend(self.__class__.generate_indexes(self.indexes))
-        keys.extend(self.__class__.generate_indexes(self.unique_indexes, unique=True))
-
-        return (
-            f"CREATE TABLE `{self.name}` (\n"
-            + ",\n".join(
-                itertools.chain((v.describe for v in self.fields.values()), keys)
-            )
-            + f"\n) {self.POSTFIX}"
-        )
+    model: typing.Type[Model]
 
     @classmethod
     def _parse(
@@ -191,25 +184,24 @@ class Schema:
             indexes=[],
             unique_indexes=[],
             abstracted=False,
+            model=m,
         )
 
         for _m in m.mro()[::-1]:
             if issubclass(_m, Model):
                 schema = cls._parse(_m, schema)
+        m.SCHEMA = schema
 
         return schema
 
     @classmethod
-    def generate_all(cls, paths: typing.List[str], database="") -> str:
-        """Generate all orm table by package path"""
+    def parse_all(
+        cls: typing.Type[SCHEMA_TV], paths: typing.List[str]
+    ) -> typing.List[SCHEMA_TV]:
+        """Parse all orm table by package path"""
         modules = []
         results = []
         models = set()
-        if database:
-            results.append(
-                f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            )
-            results.append(f"USE `{database}`;")
         # get all modules from packages and subpackages
         for path in paths:
             module: typing.Any = import_module(path)
@@ -223,7 +215,7 @@ class Schema:
                     else:
                         modules.append(import_module(next_path))
                 if len(package_path) > 0:
-                    results.append(cls.generate_all(package_path))
+                    results.extend(cls.parse_all(package_path))
         # get and sift ant class obj from modules
         for module in modules:
             for name, obj in inspect.getmembers(module):
@@ -236,6 +228,37 @@ class Schema:
                     models.add(obj)
                     schema = cls.parse(obj)
                     if not schema.abstracted:
-                        results.append(cls.parse(obj).to_sql())
+                        results.append(schema)
+
+        return results
+
+    @classmethod
+    def generate_all(cls, paths: typing.List[str], database="") -> str:
+        """Generate all orm table define by package path"""
+        results = []
+        if database:
+            results.append(
+                f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            )
+            results.append(f"USE `{database}`;")
+        for s in cls.parse_all(paths):
+            results.append(s.to_sql())
 
         return "\n".join(results)
+
+    def to_sql(self) -> str:
+        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
+        keys.extend(self.__class__.generate_indexes(self.indexes))
+        keys.extend(self.__class__.generate_indexes(self.unique_indexes, unique=True))
+
+        return (
+            f"CREATE TABLE `{self.name}` (\n"
+            + ",\n".join(
+                itertools.chain((v.describe for v in self.fields.values()), keys)
+            )
+            + f"\n) {self.POSTFIX}"
+        )
+
+    async def make_migration(self, database: Database) -> str:
+        """compare model and DB table"""
+        return ""

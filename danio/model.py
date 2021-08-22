@@ -1,11 +1,15 @@
 """
 Base ORM model with CRUD
 """
+from __future__ import annotations
+
 import dataclasses
 import enum
 import typing
 
-from .database import Database
+if typing.TYPE_CHECKING:
+    from .database import Database
+    from .schema import Schema
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 
@@ -32,6 +36,7 @@ class Model:
     __table_abstracted: typing.ClassVar[
         bool
     ] = True  # do not impact subclass, default false for every class except defined as true
+    SCHEMA: typing.ClassVar[Schema]
 
     @property
     def table_name(self) -> str:
@@ -39,7 +44,11 @@ class Model:
 
     def dump(self) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
-        return dataclasses.asdict(self)
+        data = {}
+        for f in self.SCHEMA.fields.values():
+            data[f.db_name] = getattr(self, f.name)
+
+        return data
 
     def validate(self):
         pass
@@ -106,7 +115,13 @@ class Model:
         cls: typing.Type[MODEL_TV], rows: typing.List[typing.Mapping]
     ) -> typing.List[MODEL_TV]:
         """Load DB data to dataclass"""
-        return [cls(**row) for row in rows]
+        instances = []
+        for row in rows:
+            data = {}
+            for f in cls.SCHEMA.fields.values():
+                data[f.name] = row[f.db_name]
+            instances.append(cls(**data))
+        return instances
 
     @classmethod
     async def select(
@@ -121,7 +136,7 @@ class Model:
         return cls.load(
             await database.select(
                 cls.get_table_name(),
-                [f.name for f in dataclasses.fields(cls)],
+                [f.db_name for f in cls.SCHEMA.fields.values()],
                 limit=limit,
                 order_by=order_by,
                 **conditions
