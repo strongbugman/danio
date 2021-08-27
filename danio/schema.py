@@ -8,11 +8,11 @@ import itertools
 import random
 import re
 import typing
-from importlib import import_module
-from pkgutil import iter_modules
 
 from .exception import SchemaException
-from .model import Model
+
+if typing.TYPE_CHECKING:
+    from .model import Model
 
 if typing.TYPE_CHECKING:
     from .database import Database
@@ -26,10 +26,21 @@ class Field:
     db_name: str
     describe: str
 
+    def to_sql(self) -> str:
+        return self.describe
+
 
 @dataclasses.dataclass
 class Index:
     fields: typing.List[Field]
+    unique: bool
+
+    def to_sql(self) -> str:
+        return (
+            f"{'UNIQUE ' if self.unique else ''}KEY "
+            f"`{'_'.join(f.db_name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
+            f"({', '.join(f'`{f.db_name}`' for f in self.fields)})"
+        )
 
 
 @dataclasses.dataclass
@@ -38,15 +49,28 @@ class Schema:
         str
     ] = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
     FIELD_DESCRIBE_PATTERN: typing.ClassVar = re.compile(r"\"database: (.*)\"")
-    FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"^`(.*)`")
+    FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"^`([^ ,]*)`")
+    DB_FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"`([^ ,]*)`")
 
     name: str
-    fields: typing.Dict[str, Field]
+    fields: typing.List[Field]
     primary_field: Field
     indexes: typing.List[Index]
     unique_indexes: typing.List[Index]
     abstracted: bool
-    model: typing.Type[Model]
+
+    def to_model_fields(self) -> typing.Dict[str, Field]:
+        return {f.name: f for f in self.fields}
+
+    def to_sql(self) -> str:
+        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
+        keys.extend([index.to_sql() for index in self.indexes])
+
+        return (
+            f"CREATE TABLE `{self.name}` (\n"
+            + ",\n".join(itertools.chain((v.to_sql() for v in self.fields), keys))
+            + f"\n) {self.POSTFIX}"
+        )
 
     @classmethod
     def _parse(
@@ -128,137 +152,113 @@ class Schema:
                                 describe = describe.replace(
                                     "`{name}`", f"`{field_db_name}`"
                                 )
-                            schema.fields[field_name] = Field(
-                                name=field_name,
-                                db_name=field_db_name,
-                                describe=describe,
+                            schema.fields.append(
+                                Field(
+                                    name=field_name,
+                                    db_name=field_db_name,
+                                    describe=describe,
+                                )
                             )
                         except IndexError as e:
                             raise SchemaException(
                                 f"{schema.name}: can't find field db name"
                             ) from e
                     else:
-                        with contextlib.suppress(KeyError):
-                            schema.fields.pop(a.target.id)  # type: ignore
+                        with contextlib.suppress(ValueError):
+                            schema.fields.remove(a.target.id)  # type: ignore
 
         try:
+            model_fields = schema.to_model_fields()
             if primary_key:
-                schema.primary_field = schema.fields[primary_key]
+                schema.primary_field = model_fields[primary_key]
             if index_keys:
-                schema.indexes.clear()
-                schema.indexes = [
-                    Index(fields=[schema.fields[key] for key in keys])
-                    for keys in index_keys
-                ]
+                for index in schema.indexes.copy():
+                    if not index.unique:
+                        schema.indexes.remove(index)
+                schema.indexes.extend(
+                    [
+                        Index(fields=[model_fields[key] for key in keys], unique=False)
+                        for keys in index_keys
+                    ]
+                )
             if unique_keys:
-                schema.unique_indexes.clear()
-                schema.unique_indexes = [
-                    Index(fields=[schema.fields[key] for key in keys])
-                    for keys in unique_keys
-                ]
+                for index in schema.indexes.copy():
+                    if index.unique:
+                        schema.indexes.remove(index)
+                schema.indexes.extend(
+                    [
+                        Index(fields=[model_fields[key] for key in keys], unique=True)
+                        for keys in unique_keys
+                    ]
+                )
         except KeyError as e:
             raise SchemaException(f"{schema.name}: missing field") from e
 
         return schema
 
     @classmethod
-    def generate_indexes(
-        cls, indexes: typing.List[Index], unique=False
-    ) -> typing.List[str]:
-        row_keys = []
-        for index in indexes:
-            row_keys.append(
-                f"{'UNIQUE ' if unique else ''}KEY "
-                f"`{'_'.join(f.name for f in index.fields)[:15]}_{random.randint(1, 10000)}({'_uiq' if unique else '_idx'})` "
-                f"({', '.join(f'`{f.name}`' for f in index.fields)})"
-            )
-
-        return row_keys
-
-    @classmethod
-    def parse(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
+    def from_model(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
         schema = cls(
-            name=m.get_table_name(),
-            fields={},
+            name=m.table_name,
+            fields=[],
             primary_field=Field(name="", describe="", db_name=""),
             indexes=[],
             unique_indexes=[],
             abstracted=False,
-            model=m,
         )
 
         for _m in m.mro()[::-1]:
-            if issubclass(_m, Model):
-                schema = cls._parse(_m, schema)
-        m.SCHEMA = schema
+            if issubclass(_m, m.mro()[-2]):
+                schema = cls._parse(_m, schema)  # type: ignore
 
         return schema
 
     @classmethod
-    def parse_all(
-        cls: typing.Type[SCHEMA_TV], paths: typing.List[str]
-    ) -> typing.List[SCHEMA_TV]:
-        """Parse all orm table by package path"""
-        modules = []
-        results = []
-        models = set()
-        # get all modules from packages and subpackages
-        for path in paths:
-            module: typing.Any = import_module(path)
-            modules.append(module)
-            if hasattr(module, "__path__"):
-                package_path = []
-                for _, name, ispkg in iter_modules(module.__path__):
-                    next_path = path + "." + name
-                    if ispkg:
-                        package_path.append(next_path)
-                    else:
-                        modules.append(import_module(next_path))
-                if len(package_path) > 0:
-                    results.extend(cls.parse_all(package_path))
-        # get and sift ant class obj from modules
-        for module in modules:
-            for name, obj in inspect.getmembers(module):
-                if (
-                    isinstance(obj, type)
-                    and issubclass(obj, Model)
-                    and obj is not Model
-                    and obj not in models
-                ):
-                    models.add(obj)
-                    schema = cls.parse(obj)
-                    if not schema.abstracted:
-                        results.append(schema)
+    async def from_db(
+        cls: typing.Type[SCHEMA_TV], database: Database, m: typing.Type[Model]
+    ) -> SCHEMA_TV:
+        schema = cls(
+            name=m.table_name,
+            fields=[],
+            primary_field=Field(name="", describe="", db_name=""),
+            indexes=[],
+            unique_indexes=[],
+            abstracted=False,
+        )
+        db_names = {f.db_name: f.name for f in m.schema.fields}
+        for line in (await database.fetch_all(f"SHOW CREATE TABLE {m.table_name}"))[0][
+            1
+        ].split("\n")[1:-1]:
+            if "PRIMARY KEY" in line:
+                db_name = cls.DB_FIELD_DBNAME_PATTERN.findall(line)[0]
+                for f in schema.fields:
+                    if db_name == f.db_name:
+                        schema.primary_field = f
+            elif "KEY" in line:
+                fields = {f.db_name: f for f in schema.fields}
+                index = Index(fields=[], unique="UNIQUE" in line)
+                for db_name in cls.DB_FIELD_DBNAME_PATTERN.findall(line)[1:]:
+                    index.fields.append(fields[db_name])
+                schema.indexes.append(index)
+            else:
+                db_name = cls.DB_FIELD_DBNAME_PATTERN.findall(line)[0]
+                if db_name in db_names:
+                    name = db_names[db_name]
+                else:
+                    name = ""
+                f = Field(name=name, db_name=db_name, describe=line[2:])
+                schema.fields.append(f)
 
-        return results
+        return schema
 
-    @classmethod
-    def generate_all(cls, paths: typing.List[str], database="") -> str:
-        """Generate all orm table define by package path"""
-        results = []
-        if database:
-            results.append(
-                f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            )
-            results.append(f"USE `{database}`;")
-        for s in cls.parse_all(paths):
-            results.append(s.to_sql())
 
-        return "\n".join(results)
+@dataclasses.dataclass
+class Migration:
+    name: str
+    delete_fields: typing.Dict[str, Field]
+    add_fields: typing.Dict[str, Field]
+    delete_indexes: typing.List[Index]
+    add_indexes: typing.List[Index]
 
     def to_sql(self) -> str:
-        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
-        keys.extend(self.__class__.generate_indexes(self.indexes))
-        keys.extend(self.__class__.generate_indexes(self.unique_indexes, unique=True))
-
-        return (
-            f"CREATE TABLE `{self.name}` (\n"
-            + ",\n".join(
-                itertools.chain((v.describe for v in self.fields.values()), keys)
-            )
-            + f"\n) {self.POSTFIX}"
-        )
-
-    async def make_migration(self, database: Database) -> str:
-        """compare model and DB table"""
         return ""

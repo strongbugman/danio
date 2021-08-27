@@ -7,9 +7,11 @@ import dataclasses
 import enum
 import typing
 
+from .schema import Schema
+from .utils import class_property
+
 if typing.TYPE_CHECKING:
     from .database import Database
-    from .schema import Schema
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 
@@ -36,16 +38,24 @@ class Model:
     __table_abstracted: typing.ClassVar[
         bool
     ] = True  # do not impact subclass, default false for every class except defined as true
-    SCHEMA: typing.ClassVar[Schema]
+    _schema: typing.ClassVar[typing.Optional[Schema]] = None
 
-    @property
-    def table_name(self) -> str:
-        return self.__class__.get_table_name()
+    @class_property
+    @classmethod
+    def table_name(cls) -> str:
+        return cls.get_table_name()
+
+    @class_property
+    @classmethod
+    def schema(cls) -> Schema:
+        if not cls._schema:
+            cls._schema = Schema.from_model(cls)
+        return cls._schema
 
     def dump(self) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
         data = {}
-        for f in self.SCHEMA.fields.values():
+        for f in self.schema.fields:
             data[f.db_name] = getattr(self, f.name)
 
         return data
@@ -118,7 +128,7 @@ class Model:
         instances = []
         for row in rows:
             data = {}
-            for f in cls.SCHEMA.fields.values():
+            for f in cls.schema.fields:
                 data[f.name] = row[f.db_name]
             instances.append(cls(**data))
         return instances
@@ -136,7 +146,7 @@ class Model:
         return cls.load(
             await database.select(
                 cls.get_table_name(),
-                [f.db_name for f in cls.SCHEMA.fields.values()],
+                [f.db_name for f in cls.schema.fields],
                 limit=limit,
                 order_by=order_by,
                 **conditions

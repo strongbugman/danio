@@ -64,7 +64,7 @@ async def database():
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         )
         await db.execute(f"USE `{db_name}`;")
-        await db.execute(Schema.parse(User).to_sql())
+        await db.execute(Schema.from_model(User).to_sql())
         await read_db.execute(f"USE `{db_name}`;")
         yield db
     finally:
@@ -152,7 +152,7 @@ async def test_schema():
     class UserProfile(User):
         user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
         level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
-        coins: int = 0  # "database: `coins` int(10) NOT NULL COMMENT 'User coins'"
+        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
 
         __table_unique_keys: typing.ClassVar = ((user_id,),)
         __table_index_keys: typing.ClassVar = (
@@ -163,13 +163,14 @@ async def test_schema():
             ("level",),
         )
 
-    await db.execute(Schema.parse(UserProfile).to_sql())
+    await db.execute(Schema.from_model(UserProfile).to_sql())
+    await Schema.from_db(db, UserProfile)
     assert not (await UserProfile.select())
     assert (
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
     )
     # generate all
-    assert Schema.generate_all(["danio", "tests"])
+    assert db.get_all_schema_sql(["danio", "tests"], db_name="test_app")
     # abstract class
 
     @dataclasses.dataclass
@@ -181,8 +182,8 @@ async def test_schema():
 
         __table_abstracted: typing.ClassVar[bool] = True
 
-    assert Schema.parse(BaseUserBackpack).abstracted
-    assert Schema.parse(BaseUserBackpack).to_sql()
+    assert Schema.from_model(BaseUserBackpack).abstracted
+    assert Schema.from_model(BaseUserBackpack).to_sql()
     # disable fields
 
     @dataclasses.dataclass
@@ -200,7 +201,7 @@ async def test_schema():
             0  # "database: `{name}` int(10) NOT NULL COMMENT 'backpack weight'"
         )
 
-    sql = Schema.parse(UserBackpack2).to_sql()
+    sql = Schema.from_model(UserBackpack2).to_sql()
     assert "user_id2" in sql
     assert "weight" in sql
-    await db.execute(Schema.parse(UserBackpack2).to_sql())
+    await db.execute(Schema.from_model(UserBackpack2).to_sql())
