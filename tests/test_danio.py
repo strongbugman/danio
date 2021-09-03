@@ -163,8 +163,8 @@ async def test_schema():
             ("level",),
         )
 
-    await db.execute(Schema.from_model(UserProfile).to_sql())
-    await Schema.from_db(db, UserProfile)
+    assert Schema.from_model(UserProfile) == UserProfile.schema
+    await db.execute(UserProfile.schema.to_sql())
     assert not (await UserProfile.select())
     assert (
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
@@ -182,8 +182,8 @@ async def test_schema():
 
         __table_abstracted: typing.ClassVar[bool] = True
 
-    assert Schema.from_model(BaseUserBackpack).abstracted
-    assert Schema.from_model(BaseUserBackpack).to_sql()
+    assert BaseUserBackpack.schema.abstracted
+    assert BaseUserBackpack.schema.to_sql()
     # disable fields
 
     @dataclasses.dataclass
@@ -201,7 +201,46 @@ async def test_schema():
             0  # "database: `{name}` int(10) NOT NULL COMMENT 'backpack weight'"
         )
 
-    sql = Schema.from_model(UserBackpack2).to_sql()
+    sql = UserBackpack2.schema.to_sql()
     assert "user_id2" in sql
     assert "weight" in sql
-    await db.execute(Schema.from_model(UserBackpack2).to_sql())
+    await db.execute(UserBackpack2.schema.to_sql())
+
+
+@pytest.mark.asyncio
+async def test_migrate():
+    @dataclasses.dataclass
+    class UserProfile(User):
+        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
+        level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
+        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
+
+        __table_unique_keys: typing.ClassVar = ((user_id,),)
+        __table_index_keys: typing.ClassVar = (
+            (
+                User.created_at,
+                User.updated_at,
+            ),
+            ("level",),
+        )
+
+    @dataclasses.dataclass
+    class NewUserProfile(User):
+        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
+        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
+        group_id: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User group'"
+
+        __table_unique_keys: typing.ClassVar = ((user_id,),)
+        __table_index_keys: typing.ClassVar = (
+            (
+                User.created_at,
+                User.updated_at,
+            ),
+            ("group_id",),
+        )
+
+    await db.execute(Schema.from_model(UserProfile).to_sql())
+    db_schema = await Schema.from_db(db, UserProfile)
+    assert UserProfile.schema == db_schema
+
+    NewUserProfile.schema - db_schema

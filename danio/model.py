@@ -48,8 +48,10 @@ class Model:
     @class_property
     @classmethod
     def schema(cls) -> Schema:
-        if not cls._schema:
+        if not cls._schema or cls._schema.name != cls.table_name:
             cls._schema = Schema.from_model(cls)
+        if cls._schema.name != cls.table_name:
+            print(cls._schema.name, cls.table_name)
         return cls._schema
 
     def dump(self) -> typing.Dict[str, typing.Any]:

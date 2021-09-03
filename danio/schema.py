@@ -25,6 +25,13 @@ class Field:
     name: str
     db_name: str
     describe: str
+    # db_type
+
+    def __hash__(self):
+        return hash(f"{self.db_name}")
+
+    def __eq__(self, other: Field) -> bool:
+        return self.__hash__() == other.__hash__()
 
     def to_sql(self) -> str:
         return self.describe
@@ -35,12 +42,35 @@ class Index:
     fields: typing.List[Field]
     unique: bool
 
+    def __hash__(self):
+        return hash((self.unique, (f.db_name for f in self.fields)))
+
+    def __eq__(self, other: Index) -> bool:
+        return self.__hash__() == other.__hash__()
+
     def to_sql(self) -> str:
         return (
             f"{'UNIQUE ' if self.unique else ''}KEY "
             f"`{'_'.join(f.db_name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
             f"({', '.join(f'`{f.db_name}`' for f in self.fields)})"
         )
+
+
+@dataclasses.dataclass
+class Migration:
+    """
+    Support field changes: add, drop, change type
+    Support index changes: add, drop
+    """
+    name: str
+    delete_fields: typing.List[Field]
+    add_fields: typing.List[Field]
+    change_fields: typing.List[Field]
+    delete_indexes: typing.List[Index]
+    add_indexes: typing.List[Index]
+
+    def to_sql(self) -> str:
+        return ""
 
 
 @dataclasses.dataclass
@@ -56,8 +86,18 @@ class Schema:
     fields: typing.List[Field]
     primary_field: Field
     indexes: typing.List[Index]
-    unique_indexes: typing.List[Index]
     abstracted: bool
+
+    def __hash__(self):
+        return hash((self.name, (f for f in self.fields), self.primary_field, (i for i in self.indexes)))
+
+    def __eq__(self, other: Schema):
+        return self.__hash__() == other.__hash__()
+
+    def __sub__(self, other: Schema) -> Migration:
+        print(set(self.fields) - set(other.fields))
+        print(set(other.fields) - set(self.fields))
+        pass
 
     def to_model_fields(self) -> typing.Dict[str, Field]:
         return {f.name: f for f in self.fields}
@@ -150,7 +190,7 @@ class Schema:
                             if field_db_name == "{}":
                                 field_db_name = field_name
                                 describe = describe.replace(
-                                    "`{name}`", f"`{field_db_name}`"
+                                    "`{}`", f"`{field_db_name}`"
                                 )
                             schema.fields.append(
                                 Field(
@@ -165,7 +205,10 @@ class Schema:
                             ) from e
                     else:
                         with contextlib.suppress(ValueError):
-                            schema.fields.remove(a.target.id)  # type: ignore
+                            for field in schema.fields:
+                                if field.name == a.target.id:  # type: ignore
+                                    schema.fields.remove(field)
+                                    break
 
         try:
             model_fields = schema.to_model_fields()
@@ -203,7 +246,6 @@ class Schema:
             fields=[],
             primary_field=Field(name="", describe="", db_name=""),
             indexes=[],
-            unique_indexes=[],
             abstracted=False,
         )
 
@@ -222,7 +264,6 @@ class Schema:
             fields=[],
             primary_field=Field(name="", describe="", db_name=""),
             indexes=[],
-            unique_indexes=[],
             abstracted=False,
         )
         db_names = {f.db_name: f.name for f in m.schema.fields}
@@ -234,6 +275,7 @@ class Schema:
                 for f in schema.fields:
                     if db_name == f.db_name:
                         schema.primary_field = f
+                        break
             elif "KEY" in line:
                 fields = {f.db_name: f for f in schema.fields}
                 index = Index(fields=[], unique="UNIQUE" in line)
@@ -250,15 +292,3 @@ class Schema:
                 schema.fields.append(f)
 
         return schema
-
-
-@dataclasses.dataclass
-class Migration:
-    name: str
-    delete_fields: typing.Dict[str, Field]
-    add_fields: typing.Dict[str, Field]
-    delete_indexes: typing.List[Index]
-    add_indexes: typing.List[Index]
-
-    def to_sql(self) -> str:
-        return ""
