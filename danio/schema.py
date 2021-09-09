@@ -8,6 +8,7 @@ import itertools
 import random
 import re
 import typing
+from datetime import datetime
 
 from .exception import SchemaException
 
@@ -22,7 +23,7 @@ SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 
 @dataclasses.dataclass
 class Field:
-    name: str
+    name: str  # mapping model filed name
     db_name: str
     describe: str
     # db_type
@@ -30,7 +31,9 @@ class Field:
     def __hash__(self):
         return hash(f"{self.db_name}")
 
-    def __eq__(self, other: Field) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Field):
+            raise NotImplementedError()
         return self.__hash__() == other.__hash__()
 
     def to_sql(self) -> str:
@@ -41,36 +44,26 @@ class Field:
 class Index:
     fields: typing.List[Field]
     unique: bool
+    name: str = ""
+
+    def __post_init__(self):
+        if not self.name:
+            self.name = f"`{'_'.join(f.db_name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
 
     def __hash__(self):
-        return hash((self.unique, (f.db_name for f in self.fields)))
+        return hash((self.unique, tuple(f.db_name for f in self.fields)))
 
-    def __eq__(self, other: Index) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Index):
+            raise NotImplementedError()
         return self.__hash__() == other.__hash__()
 
     def to_sql(self) -> str:
         return (
             f"{'UNIQUE ' if self.unique else ''}KEY "
-            f"`{'_'.join(f.db_name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
+            f"{self.name}"
             f"({', '.join(f'`{f.db_name}`' for f in self.fields)})"
         )
-
-
-@dataclasses.dataclass
-class Migration:
-    """
-    Support field changes: add, drop, change type
-    Support index changes: add, drop
-    """
-    name: str
-    delete_fields: typing.List[Field]
-    add_fields: typing.List[Field]
-    change_fields: typing.List[Field]
-    delete_indexes: typing.List[Index]
-    add_indexes: typing.List[Index]
-
-    def to_sql(self) -> str:
-        return ""
 
 
 @dataclasses.dataclass
@@ -78,26 +71,46 @@ class Schema:
     POSTFIX: typing.ClassVar[
         str
     ] = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
-    FIELD_DESCRIBE_PATTERN: typing.ClassVar = re.compile(r"\"database: (.*)\"")
-    FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"^`([^ ,]*)`")
-    DB_FIELD_DBNAME_PATTERN: typing.ClassVar = re.compile(r"`([^ ,]*)`")
+    FIELD_DESCRIBE_PATTERN: typing.ClassVar[re.Pattern] = re.compile(
+        r"\"database: (.*)\""
+    )
+    FIELD_DBNAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"^`([^ ,]*)`")
+    DB_FIELD_NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"`([^ ,]*)`")
 
-    name: str
-    fields: typing.List[Field]
+    name: str  # TODO: table name
+    fields: typing.List[Field]  # TODO: set
     primary_field: Field
     indexes: typing.List[Index]
     abstracted: bool
 
     def __hash__(self):
-        return hash((self.name, (f for f in self.fields), self.primary_field, (i for i in self.indexes)))
+        return hash(
+            (
+                self.name,
+                (f for f in self.fields),
+                self.primary_field,
+                (i for i in self.indexes),
+            )
+        )
 
-    def __eq__(self, other: Schema):
+    def __eq__(self, other: object):
+        if not isinstance(other, Schema):
+            raise NotImplementedError()
         return self.__hash__() == other.__hash__()
 
-    def __sub__(self, other: Schema) -> Migration:
-        print(set(self.fields) - set(other.fields))
-        print(set(other.fields) - set(self.fields))
-        pass
+    def __sub__(self, other: object) -> Migration:
+        if not isinstance(other, Schema):
+            raise NotImplementedError()
+
+        add_fields = set(self.fields) - set(other.fields)
+        drop_fields = set(other.fields) - set(self.fields)
+        return Migration(
+            schema=self,
+            add_indexes=list(set(self.indexes) - set(other.indexes)),
+            drop_indexes=list(set(other.indexes) - set(self.indexes)),
+            add_fields=list(add_fields),
+            drop_fields=list(drop_fields),
+        )
 
     def to_model_fields(self) -> typing.Dict[str, Field]:
         return {f.name: f for f in self.fields}
@@ -192,13 +205,19 @@ class Schema:
                                 describe = describe.replace(
                                     "`{}`", f"`{field_db_name}`"
                                 )
-                            schema.fields.append(
-                                Field(
-                                    name=field_name,
-                                    db_name=field_db_name,
-                                    describe=describe,
-                                )
+                            field = Field(
+                                name=field_name,
+                                db_name=field_db_name,
+                                describe=describe,
                             )
+                            if field not in schema.fields:
+                                schema.fields.append(
+                                    Field(
+                                        name=field_name,
+                                        db_name=field_db_name,
+                                        describe=describe,
+                                    )
+                                )
                         except IndexError as e:
                             raise SchemaException(
                                 f"{schema.name}: can't find field db name"
@@ -271,19 +290,22 @@ class Schema:
             1
         ].split("\n")[1:-1]:
             if "PRIMARY KEY" in line:
-                db_name = cls.DB_FIELD_DBNAME_PATTERN.findall(line)[0]
+                db_name = cls.DB_FIELD_NAME_PATTERN.findall(line)[0]
                 for f in schema.fields:
                     if db_name == f.db_name:
                         schema.primary_field = f
                         break
             elif "KEY" in line:
                 fields = {f.db_name: f for f in schema.fields}
-                index = Index(fields=[], unique="UNIQUE" in line)
-                for db_name in cls.DB_FIELD_DBNAME_PATTERN.findall(line)[1:]:
-                    index.fields.append(fields[db_name])
-                schema.indexes.append(index)
+                index_fileds = []
+                _names = cls.DB_FIELD_NAME_PATTERN.findall(line)
+                index_name = _names[0]
+                index_fileds = [fields[n] for n in _names[1:]]
+                schema.indexes.append(
+                    Index(fields=index_fileds, unique="UNIQUE" in line, name=index_name)
+                )
             else:
-                db_name = cls.DB_FIELD_DBNAME_PATTERN.findall(line)[0]
+                db_name = cls.DB_FIELD_NAME_PATTERN.findall(line)[0]
                 if db_name in db_names:
                     name = db_names[db_name]
                 else:
@@ -292,3 +314,50 @@ class Schema:
                 schema.fields.append(f)
 
         return schema
+
+
+@dataclasses.dataclass
+class Migration:
+    """
+    Schema migration support
+    Support table changes: add, drop, name change?
+    Support field changes: add, drop, change type, name change?
+    Support index changes: add, drop
+    """
+
+    schema: Schema
+    name: str = ""
+    add_schema: bool = False
+    drop_schema: bool = False
+    drop_fields: typing.List[Field] = dataclasses.field(default_factory=list)
+    add_fields: typing.List[Field] = dataclasses.field(default_factory=list)
+    change_fields: typing.List[Field] = dataclasses.field(default_factory=list)
+    add_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
+    drop_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
+
+    def __post__init__(self):
+        if not self.name:
+            self.name = f"{datetime.now()}"
+
+    def to_sql(self) -> str:
+        sqls = []
+        if self.add_schema:
+            sqls.append(self.schema.to_sql())
+        elif self.drop_schema:
+            sqls.append(f"DROP TABLE {self.schema.name}")
+        else:
+            for f in self.add_fields:
+                sqls.append(f"ALTER TABLE {self.schema.name} ADD COLUMN {f.to_sql()}")
+            for f in self.drop_fields:
+                sqls.append(f"ALTER TABLE {self.schema.name} DROP COLUMN {f.db_name}")
+            for i in self.add_indexes:
+                sqls.append(
+                    f"CREATE {'UNIQUE' if i.unique else ''} INDEX {i.name} on {self.schema.name} ({','.join('`' + f.db_name + '`' for f in i.fields)})"
+                )
+            for i in self.drop_indexes:
+                if not set(i.fields) & set(self.drop_fields):
+                    sqls.append(f"ALTER TABLE {self.schema.name} DROP INDEX {i.name}")
+        if sqls:
+            sqls[-1] += ";"
+
+        return ";\n".join(sqls)

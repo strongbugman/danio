@@ -7,6 +7,7 @@ import pymysql
 import pytest
 
 from danio import Database, Model, Schema, ValidateException
+from danio.schema import Migration
 
 db = Database(
     "mysql://root:app@localhost:3306/",
@@ -197,14 +198,15 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
         user_id: int = 0  # "database: `user_id2` int(10) NOT NULL COMMENT 'User ID'"
-        weight: int = (
-            0  # "database: `{name}` int(10) NOT NULL COMMENT 'backpack weight'"
-        )
+        weight: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'backpack'"
 
     sql = UserBackpack2.schema.to_sql()
     assert "user_id2" in sql
     assert "weight" in sql
     await db.execute(UserBackpack2.schema.to_sql())
+    # from db
+    assert UserBackpack2.schema == await Schema.from_db(db, UserBackpack2)
+    await Schema.from_db(db, UserProfile)
 
 
 @pytest.mark.asyncio
@@ -224,23 +226,22 @@ async def test_migrate():
             ("level",),
         )
 
-    @dataclasses.dataclass
-    class NewUserProfile(User):
-        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
-        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
-        group_id: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User group'"
-
-        __table_unique_keys: typing.ClassVar = ((user_id,),)
-        __table_index_keys: typing.ClassVar = (
-            (
-                User.created_at,
-                User.updated_at,
-            ),
-            ("group_id",),
-        )
-
-    await db.execute(Schema.from_model(UserProfile).to_sql())
-    db_schema = await Schema.from_db(db, UserProfile)
-    assert UserProfile.schema == db_schema
-
-    NewUserProfile.schema - db_schema
+    await db.execute(UserProfile.schema.to_sql())
+    await db.execute(
+        "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
+        "ALTER TABLE userprofile DROP COLUMN level;"
+        "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
+    )
+    # migration
+    migration: Migration = UserProfile.schema - await Schema.from_db(db, UserProfile)
+    assert len(migration.add_fields) == 1
+    assert migration.add_fields[0].db_name == "level"
+    assert len(migration.drop_fields) == 1
+    assert migration.drop_fields[0].db_name == "group_id"
+    assert len(migration.add_indexes) == 1
+    assert migration.add_indexes[0].fields[0].db_name == "level"
+    assert len(migration.drop_indexes) == 1
+    assert migration.drop_indexes[0].fields[0].db_name == "group_id"
+    # migrate
+    await db.execute(migration.to_sql())
+    assert UserProfile.schema == await Schema.from_db(db, UserProfile)
