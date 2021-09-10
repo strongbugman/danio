@@ -213,7 +213,7 @@ async def test_schema():
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
+        user_id: int = 0  # "database: `user_id` bigint(10) NOT NULL COMMENT 'User ID'"
         level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
         coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
 
@@ -230,18 +230,19 @@ async def test_migrate():
     await db.execute(
         "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
         "ALTER TABLE userprofile DROP COLUMN level;"
+        "ALTER TABLE userprofile MODIFY user_id int(10);"
         "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
     )
-    # migration
+    # make migration
     migration: Migration = UserProfile.schema - await Schema.from_db(db, UserProfile)
     assert len(migration.add_fields) == 1
-    assert migration.add_fields[0].db_name == "level"
+    assert migration.add_fields[0].name == "level"
     assert len(migration.drop_fields) == 1
-    assert migration.drop_fields[0].db_name == "group_id"
+    assert migration.drop_fields[0].name == "group_id"
     assert len(migration.add_indexes) == 1
-    assert migration.add_indexes[0].fields[0].db_name == "level"
+    assert migration.add_indexes[0].fields[0].name == "level"
     assert len(migration.drop_indexes) == 1
-    assert migration.drop_indexes[0].fields[0].db_name == "group_id"
+    assert migration.drop_indexes[0].fields[0].name == "group_id"
     # migrate
     await db.execute(migration.to_sql())
     assert UserProfile.schema == await Schema.from_db(db, UserProfile)

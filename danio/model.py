@@ -58,7 +58,7 @@ class Model:
         """Dump dataclass to DB level dict"""
         data = {}
         for f in self.schema.fields:
-            data[f.db_name] = getattr(self, f.name)
+            data[f.name] = getattr(self, f.model_name)
 
         return data
 
@@ -126,12 +126,12 @@ class Model:
     def load(
         cls: typing.Type[MODEL_TV], rows: typing.List[typing.Mapping]
     ) -> typing.List[MODEL_TV]:
-        """Load DB data to dataclass"""
+        """Load DB data to model"""
         instances = []
         for row in rows:
             data = {}
             for f in cls.schema.fields:
-                data[f.name] = row[f.db_name]
+                data[f.model_name] = row[f.name]
             instances.append(cls(**data))
         return instances
 
@@ -148,7 +148,7 @@ class Model:
         return cls.load(
             await database.select(
                 cls.get_table_name(),
-                [f.db_name for f in cls.schema.fields],
+                [f.name for f in cls.schema.fields],
                 limit=limit,
                 order_by=order_by,
                 **conditions
