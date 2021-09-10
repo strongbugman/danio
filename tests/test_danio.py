@@ -1,12 +1,14 @@
 import asyncio
 import dataclasses
 import datetime
+import glob
+import os
 import typing
 
 import pymysql
 import pytest
 
-from danio import Database, Model, Schema, ValidateException
+from danio import Database, Model, Schema, ValidateException, manage
 from danio.schema import Migration
 
 db = Database(
@@ -72,6 +74,8 @@ async def database():
         await db.execute(f"DROP DATABASE {db_name};")
         await db.disconnect()
         await read_db.disconnect()
+        for f in glob.glob("./tests/migrations/*.sql"):
+            os.remove(f)
 
 
 @pytest.mark.asyncio
@@ -171,7 +175,7 @@ async def test_schema():
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
     )
     # generate all
-    assert db.get_all_schema_sql(["danio", "tests"], db_name="test_app")
+    assert await manage.make_migration(db, [UserProfile], "./tests/migrations")
     # abstract class
 
     @dataclasses.dataclass

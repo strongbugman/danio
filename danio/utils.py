@@ -3,20 +3,24 @@ import typing
 from importlib import import_module
 from pkgutil import iter_modules
 
+TV = typing.TypeVar("TV")
 
-class class_property:
-    def __init__(self, fget: typing.Callable):
+
+class _class_property:
+    def __init__(self, fget: typing.Callable[[typing.Any], typing.Any]):
         self.fget = fget
 
     def __get__(
-        self, obj: typing.Any, cls: typing.Optional[typing.Type] = None
+        self, obj: typing.Any, type: typing.Optional[typing.Type] = None
     ) -> typing.Any:
-        if cls is None:
-            cls = obj.__class__
-        return self.fget.__get__(obj, cls)()  # type: ignore
+        if type is None:
+            type = obj.__class__
+        return self.fget.__get__(obj, type)()  # type: ignore
 
 
-TV = typing.TypeVar("TV")
+def class_property(method: typing.Callable[[typing.Type], TV]) -> TV:
+    """Just for typehints"""
+    return _class_property(method)  # type: ignore
 
 
 def find_classes(

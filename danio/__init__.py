@@ -1,3 +1,4 @@
+from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
 from .model import MODEL_TV, Model
@@ -10,4 +11,5 @@ __all__ = (
     "Schema",
     "SchemaException",
     "ValidateException",
+    "manage",
 )

@@ -8,7 +8,6 @@ import itertools
 import random
 import re
 import typing
-from datetime import datetime
 
 from .exception import SchemaException
 
@@ -86,6 +85,7 @@ class Schema:
     indexes: typing.Set[Index] = dataclasses.field(default_factory=set)
     fields: typing.Set[Field] = dataclasses.field(default_factory=set)
     abstracted: bool = False
+    model: typing.Optional[typing.Type[Model]] = None
 
     def __hash__(self):
         return hash(
@@ -103,7 +103,9 @@ class Schema:
         return self.__hash__() == other.__hash__()
 
     def __sub__(self, other: object) -> Migration:
-        if not isinstance(other, Schema):
+        if other is None:
+            return Migration(schema=self, add_schema=True)
+        elif not isinstance(other, Schema):
             raise NotImplementedError()
         # fields
         add_fields = set(self.fields) - set(other.fields)
@@ -271,6 +273,7 @@ class Schema:
         for _m in m.mro()[::-1]:
             if issubclass(_m, m.mro()[-2]):
                 schema = cls._parse(_m, schema)  # type: ignore
+        schema.model = m
 
         return schema
 
@@ -278,7 +281,7 @@ class Schema:
     async def from_db(
         cls: typing.Type[SCHEMA_TV], database: Database, m: typing.Type[Model]
     ) -> typing.Optional[SCHEMA_TV]:
-        schema = cls(name=m.table_name)
+        schema = cls(name=m.table_name, model=m)
         db_names = {f.name: f.model_name for f in m.schema.fields}
         try:
             for line in (await database.fetch_all(f"SHOW CREATE TABLE {m.table_name}"))[
@@ -327,15 +330,7 @@ class Schema:
 
 @dataclasses.dataclass
 class Migration:
-    """
-    Schema migration support
-    Support table changes: add, drop, change name
-    Support field changes: add, drop, change type
-    Support index changes: add, drop
-    """
-
     schema: Schema  # migrate to this schema
-    name: str = ""
     add_schema: bool = False
     drop_schema: bool = False
     old_schame_name: str = ""
@@ -344,10 +339,6 @@ class Migration:
     change_type_fields: typing.List[Field] = dataclasses.field(default_factory=list)
     add_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
     drop_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
-
-    def __post__init__(self):
-        if not self.name:
-            self.name = f"{datetime.now()}"
 
     def to_sql(self) -> str:
         sqls = []

@@ -5,9 +5,6 @@ import typing
 
 from databases import Database as _Database
 
-from .model import Model
-from .utils import find_classes
-
 
 class Database(_Database):
     async def insert(
@@ -85,16 +82,3 @@ class Database(_Database):
         sql += ";"
 
         return bool(await self.execute(sql, values=conditions))
-
-    def get_all_schema_sql(self, paths: typing.List[str], db_name="") -> str:
-        """Get all orm table defined sql by package path"""
-        results = []
-        if db_name:
-            results.append(
-                f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            )
-            results.append(f"USE `{db_name}`;")
-        for m in find_classes(Model, paths):
-            results.append(m.schema.to_sql())
-
-        return "\n".join(results)
