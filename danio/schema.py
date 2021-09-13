@@ -18,6 +18,7 @@ if typing.TYPE_CHECKING:
     from .database import Database
 
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
+MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
 
 
 @dataclasses.dataclass
@@ -104,7 +105,8 @@ class Schema:
 
     def __sub__(self, other: object) -> Migration:
         if other is None:
-            return Migration(schema=self, add_schema=True)
+            return Migration(schema=self, old_schema=None)
+
         elif not isinstance(other, Schema):
             raise NotImplementedError()
         # fields
@@ -124,6 +126,7 @@ class Schema:
 
         return Migration(
             schema=self,
+            old_schema=other,
             add_indexes=list(set(self.indexes) - set(other.indexes)),
             drop_indexes=list(set(other.indexes) - set(self.indexes)),
             add_fields=list(add_fields),
@@ -315,7 +318,7 @@ class Schema:
                     schema.fields.add(
                         Field(
                             name=db_name,
-                            describe=line[2:],
+                            describe=line[2:].replace(",", ""),
                             model_name=name,
                         )
                     )
@@ -330,26 +333,46 @@ class Schema:
 
 @dataclasses.dataclass
 class Migration:
-    schema: Schema  # migrate to this schema
-    add_schema: bool = False
-    drop_schema: bool = False
-    old_schame_name: str = ""
+    schema: typing.Optional[Schema]
+    old_schema: typing.Optional[Schema]
     drop_fields: typing.List[Field] = dataclasses.field(default_factory=list)
     add_fields: typing.List[Field] = dataclasses.field(default_factory=list)
     change_type_fields: typing.List[Field] = dataclasses.field(default_factory=list)
     add_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
     drop_indexes: typing.List[Index] = dataclasses.field(default_factory=list)
 
+    def __neg__(self: MIGRATION_TV) -> MIGRATION_TV:
+        change_type_fields: typing.List[Field] = []
+        if self.old_schema:
+            changed_fields = {f.name for f in self.change_type_fields}
+            old_fields = {f.name: f for f in self.old_schema.fields}
+            if self.schema:
+                change_type_fields.extend(
+                    old_fields[f.name]
+                    for f in self.schema.fields
+                    if f.name in changed_fields
+                )
+
+        return self.__class__(
+            schema=self.old_schema,
+            old_schema=self.schema,
+            add_fields=self.drop_fields,
+            drop_fields=self.add_fields,
+            change_type_fields=change_type_fields,
+            add_indexes=self.drop_indexes,
+            drop_indexes=self.add_indexes,
+        )
+
     def to_sql(self) -> str:
         sqls = []
-        if self.add_schema:
+        if self.schema and not self.old_schema:
             sqls.append(self.schema.to_sql())
-        elif self.drop_schema:
-            sqls.append(f"DROP TABLE {self.schema.name}")
-        else:
-            if self.old_schame_name:
+        elif self.old_schema and not self.schema:
+            sqls.append(f"DROP TABLE {self.old_schema.name}")
+        elif self.schema and self.old_schema:
+            if self.old_schema.name != self.schema.name:
                 sqls.append(
-                    f"ALTER TABLE {self.old_schame_name} RENAME {self.schema.name}"
+                    f"ALTER TABLE {self.old_schema.name} RENAME {self.schema.name}"
                 )
             for f in self.add_fields:
                 sqls.append(f"ALTER TABLE {self.schema.name} ADD COLUMN {f.to_sql()}")

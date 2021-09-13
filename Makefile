@@ -20,7 +20,7 @@ pypi_release: install
 	poetry publish
 
 github_release:
-	git push origin --tags
+	git push && git push origin --tags
 
 release: tag github_release pypi_release
 

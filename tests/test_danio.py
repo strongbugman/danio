@@ -175,7 +175,7 @@ async def test_schema():
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
     )
     # generate all
-    assert await manage.make_migration(db, [UserProfile], "./tests/migrations")
+    assert not await manage.make_migration(db, [UserProfile], "./tests/migrations")
     # abstract class
 
     @dataclasses.dataclass
@@ -230,7 +230,7 @@ async def test_migrate():
             ("level",),
         )
 
-    await db.execute(UserProfile.schema.to_sql())
+    await db.execute((UserProfile.schema - None).to_sql())
     await db.execute(
         "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
         "ALTER TABLE userprofile DROP COLUMN level;"
@@ -238,7 +238,8 @@ async def test_migrate():
         "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
     )
     # make migration
-    migration: Migration = UserProfile.schema - await Schema.from_db(db, UserProfile)
+    old_schema = await Schema.from_db(db, UserProfile)
+    migration: Migration = UserProfile.schema - old_schema
     assert len(migration.add_fields) == 1
     assert migration.add_fields[0].name == "level"
     assert len(migration.drop_fields) == 1
@@ -250,3 +251,7 @@ async def test_migrate():
     # migrate
     await db.execute(migration.to_sql())
     assert UserProfile.schema == await Schema.from_db(db, UserProfile)
+    # down migrate
+    await db.execute((-migration).to_sql())
+    assert old_schema == await Schema.from_db(db, UserProfile)
+    await db.execute((-(UserProfile.schema - None)).to_sql())
