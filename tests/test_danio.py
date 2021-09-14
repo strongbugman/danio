@@ -9,7 +9,7 @@ import pymysql
 import pytest
 
 from danio import Database, Model, Schema, ValidateException, manage
-from danio.schema import Migration
+from danio.model import Migration
 
 db = Database(
     "mysql://root:app@localhost:3306/",
