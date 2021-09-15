@@ -26,14 +26,21 @@ MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
 
 @dataclasses.dataclass
 class Field:
+    COMMENT_REGEX = re.compile("COMMENT '(.*)'")
+
     name: str
     describe: str
     model_name: str  # mapping model filed name
     type: str = ""
+    comment: str = ""
 
     def __post_init__(self):
         if not self.type and self.describe:
             self.type = self.describe.split(" ")[1]
+        if not self.comment and self.describe:
+            tmp = self.COMMENT_REGEX.findall(self.describe)
+            if tmp:
+                self.comment = tmp[0]
 
     def __hash__(self):
         return hash((self.name, self.type))
