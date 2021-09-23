@@ -1,6 +1,8 @@
 import asyncio
 import dataclasses
 import datetime
+import decimal
+import enum
 import glob
 import os
 import typing
@@ -8,8 +10,7 @@ import typing
 import pymysql
 import pytest
 
-from danio import Database, Model, Schema, ValidateException, manage
-from danio.model import Migration
+from danio import Database, ValidateException, manage, model
 
 db = Database(
     "mysql://root:app@localhost:3306/",
@@ -29,14 +30,22 @@ db_name = "test_danio"
 
 
 @dataclasses.dataclass
-class User(Model):
-    name: str = ""  # "database: `name` varchar(255) NOT NULL COMMENT 'User name'"
-    created_at: datetime.datetime = datetime.datetime.utcfromtimestamp(
-        0
-    )  # "database: `created_at` datetime NOT NULL COMMENT 'when created'"
-    updated_at: datetime.datetime = datetime.datetime.utcfromtimestamp(
-        0
-    )  # "database: `updated_at` datetime NOT NULL COMMENT 'when updated'"
+class User(model.Model):
+    class Gender(enum.IntEnum):
+        MALE = 1
+        FEMALE = 2
+        OTHER = 3
+
+    name: str = model.field(field_cls=model.CharField, comment="User name")
+    created_at: datetime.datetime = model.field(
+        field_cls=model.DateTimeField,
+        comment="when created",
+    )
+    updated_at: datetime.datetime = model.field(
+        field_cls=model.DateTimeField,
+        comment="when created",
+    )
+    gender: Gender = model.field(field_cls=model.IntField, enum=Gender)
 
     async def before_save(self):
         self.updated_at = datetime.datetime.utcnow()
@@ -45,14 +54,15 @@ class User(Model):
         await super().before_save()
 
     def validate(self):
+        super().validate()
         if not self.name:
             raise ValidateException("Empty name!")
 
     @classmethod
     def get_database(
-        cls, operation: Model.Operation, table: str, *args, **kwargs
+        cls, operation: model.Model.Operation, table: str, *args, **kwargs
     ) -> Database:
-        if operation == Model.Operation.READ:
+        if operation == model.Model.Operation.READ:
             return read_db
         else:
             return db
@@ -67,7 +77,7 @@ async def database():
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         )
         await db.execute(f"USE `{db_name}`;")
-        await db.execute(Schema.from_model(User).to_sql())
+        await db.execute(model.Schema.from_model(User).to_sql())
         await read_db.execute(f"USE `{db_name}`;")
         yield db
     finally:
@@ -85,39 +95,140 @@ async def test_database():
 
 
 @pytest.mark.asyncio
-async def test_model():
+async def test_sql():
     # create
     u = User(name="test_user")
     await asyncio.sleep(0.1)
     await u.save()
     assert u.updated_at >= u.created_at
     assert u.id > 0
+    assert u.gender is u.Gender.MALE
     # read
-    u = await User.get(id=u.id)
+    u = await User.get(User.id == u.id)
     assert u
     # read with limit
-    u = await User.get(id=u.id)
-    assert u
+    assert await User.select(User.id == u.id, limit=1)
     # read with order by
-    u = (await User.select(limit=1, order_by="name"))[0]
+    u = (await User.select(limit=1, order_by=User.name, order_by_asc=False))[0]
     assert u.id
+    # read with page
+    for _ in range(10):
+        await User(name="test_users").save()
+    assert await User.get(offset=10)
+    assert not await User.get(offset=11)
     # count
-    assert (await User.count()) == 1
+    assert (await User.count()) == 11
     # update
     u.name = "admin_user"
     await u.save()
     assert u.name == "admin_user"
+    await User.update(User.id == u.id, name=User.name.to_database("admin_user2"))
+    assert (await User.get()).name == "admin_user2"
     # read
-    u = (await User.select(id=u.id))[0]
-    assert u.name == "admin_user"
+    u = (await User.select(User.id == u.id))[0]
+    assert u.name == "admin_user2"
     # delete
     await u.delete()
-    assert not await User.select(id=u.id)
+    assert not await User.select(User.id == u.id)
     # create with id
     u = User(id=101, name="test_user")
     await u.save(force_insert=True)
-    u = (await User.select(id=u.id))[0]
+    u = (await User.select(User.id == u.id))[0]
     assert u.name == "test_user"
+    # sql builder
+    assert await User.select(
+        ((User.id != 1) | (User.name != "")) & (User.gender == User.Gender.MALE)
+    )
+    assert (
+        await User._select()
+        .where(User.id != 1, User.name != "", is_and=False)
+        .fetch_all()
+    )
+    assert (
+        not await User._select()
+        .where(User.id != 1, User.name != "", is_and=False)
+        .where(User.gender == User.Gender.FEMALE)
+        .fetch_all()
+    )
+    assert await User.select(User.name.like("test_%"))
+    assert await User.select(User.gender.contains([g.value for g in User.Gender]))
+    assert not (await User.select(fields=[User.id]))[0].name
+
+
+@pytest.mark.asyncio
+async def test_field():
+    @dataclasses.dataclass
+    class Table(model.Model):
+        fsint: int = model.field(field_cls=model.SmallIntField)
+        fint: int = model.field(field_cls=model.IntField)
+        fbint: int = model.field(field_cls=model.BigIntField)
+        ffloat: int = model.field(field_cls=model.FLoatField)
+        fdecimal: decimal.Decimal = model.field(field_cls=model.DecimalField)
+        fchar: str = model.field(field_cls=model.CharField)
+        ftext: str = model.field(field_cls=model.TextField)
+        ftime: datetime.timedelta = model.field(field_cls=model.TimeField)
+        fdate: datetime.date = model.field(field_cls=model.DateField)
+        fdatetime: datetime.datetime = model.field(field_cls=model.DateTimeField)
+        fjson1: typing.List[int] = model.field(field_cls=model.JsonField, default=[])
+        fjson2: typing.Dict[str, int] = model.field(
+            field_cls=model.JsonField, default={}
+        )
+
+        @classmethod
+        def get_database(cls, *args, **kwargs) -> Database:
+            return db
+
+    await db.execute(Table.schema.to_sql())
+    # create
+    t = Table()
+    assert t.fsint == 0
+    assert t.fbint == 0
+    assert t.fint == 0
+    assert t.ffloat == 0
+    assert t.fchar == ""
+    assert t.ftext == ""
+    assert t.ftime == datetime.timedelta(0)
+    assert t.fdate == datetime.date.fromtimestamp(0)
+    assert t.fdatetime == datetime.datetime.fromtimestamp(0)
+    assert t.fjson1 == []
+    assert t.fjson2 == {}
+    await t.save()
+    # read
+    t = await Table.get()
+    assert t.fint == 0
+    assert t.ffloat == 0
+    assert t.fdecimal == decimal.Decimal()
+    assert t.fchar == ""
+    assert t.ftext == ""
+    assert t.ftime == datetime.timedelta(0)
+    assert t.fdate == datetime.date.fromtimestamp(0)
+    assert t.fdatetime == datetime.datetime.fromtimestamp(0)
+    assert t.fjson1 == []
+    assert t.fjson2 == {}
+    # update
+    t.fint = 1
+    t.ffloat = 2.123456
+    t.fdecimal = decimal.Decimal("2.123456")
+    t.fchar = "hello"
+    t.ftext = "long story"
+    t.ftime = datetime.timedelta(hours=11, seconds=11)
+    t.fdate = datetime.date.fromtimestamp(24 * 60 * 60)
+    t.fdatetime = datetime.datetime.fromtimestamp(24 * 60 * 60)
+    t.fjson1.extend([1, 2, 3])
+    t.fjson2.update(x=3, y=4, z=5)
+    await t.save()
+    # read
+    t = await Table.get()
+    assert t.fint == 1
+    assert t.ffloat == 2.12346
+    assert t.fdecimal == decimal.Decimal("2.12")
+    assert t.fchar == "hello"
+    assert t.ftext == "long story"
+    assert str(t.ftime) == "11:00:11"
+    assert t.fdate == datetime.date.fromtimestamp(24 * 60 * 60)
+    assert t.fdatetime == datetime.datetime.fromtimestamp(24 * 60 * 60)
+    assert t.fjson1 == [1, 2, 3]
+    assert t.fjson2 == {"x": 3, "y": 4, "z": 5}
 
 
 @pytest.mark.asyncio
@@ -133,7 +244,7 @@ async def test_bulk_operations():
     # with conflict
     users = [User(name=f"user_{i}") for i in range(10)]
     users[-1].id = 2
-    with pytest.raises(pymysql.err.InternalError):
+    with pytest.raises(pymysql.err.IntegrityError):
         await User.bulk_create(users)
     assert await User.count() == 20
     # with special id
@@ -142,25 +253,18 @@ async def test_bulk_operations():
     )
     for i, u in enumerate(users):
         assert u.id == i + 100
-    # update
-    users = await User.select()
-    for u in users:
-        u.name = "update_name"
-    await User.bulk_update(users)
-    for u in users:
-        assert u.name == "update_name"
 
 
 @pytest.mark.asyncio
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
-        level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
-        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
+        user_id: int = model.field(field_cls=model.IntField, comment="user id")
+        level: int = model.field(field_cls=model.IntField, comment="user level")
+        coins: int = model.field(field_cls=model.IntField, comment="user coins")
 
-        __table_unique_keys: typing.ClassVar = ((user_id,),)
-        __table_index_keys: typing.ClassVar = (
+        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_index_keys: typing.ClassVar = (
             (
                 User.created_at,
                 User.updated_at,
@@ -168,7 +272,7 @@ async def test_schema():
             ("level",),
         )
 
-    assert Schema.from_model(UserProfile) == UserProfile.schema
+    assert model.Schema.from_model(UserProfile) == UserProfile.schema
     await db.execute(UserProfile.schema.to_sql())
     assert not (await UserProfile.select())
     assert (
@@ -180,12 +284,10 @@ async def test_schema():
 
     @dataclasses.dataclass
     class BaseUserBackpack(User):
-        user_id: int = 0  # "database: `user_id` int(10) NOT NULL COMMENT 'User ID'"
-        weight: int = (
-            0  # "database: `weight` int(10) NOT NULL COMMENT 'backpack weight'"
-        )
+        user_id: int = model.field(field_cls=model.IntField)
+        weight: int = model.field(field_cls=model.IntField)
 
-        __table_abstracted: typing.ClassVar[bool] = True
+        _table_abstracted: typing.ClassVar[bool] = True
 
     assert BaseUserBackpack.schema.abstracted
     assert BaseUserBackpack.schema.to_sql()
@@ -193,36 +295,36 @@ async def test_schema():
 
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
-        id: int = 0  # using pk rather than id
-        pk: int = 0  # "database: `pk` int(11) NOT NULL AUTO_INCREMENT"
+        id: int = 0
+        pk: int = model.field(field_cls=model.IntField, auto_increment=True)
 
-        __table_primary_key: typing.ClassVar[str] = pk
+        _table_primary_key: typing.ClassVar[model.Field] = pk
 
     # db name
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
-        user_id: int = 0  # "database: `user_id2` int(10) NOT NULL COMMENT 'User ID'"
-        weight: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'backpack'"
+        user_id: int = model.field(field_cls=model.IntField, name="user_id2")
+        weight: int = model.field(field_cls=model.IntField)
 
     sql = UserBackpack2.schema.to_sql()
     assert "user_id2" in sql
     assert "weight" in sql
     await db.execute(UserBackpack2.schema.to_sql())
     # from db
-    assert UserBackpack2.schema == await Schema.from_db(db, UserBackpack2)
-    await Schema.from_db(db, UserProfile)
+    assert UserBackpack2.schema == await model.Schema.from_db(db, UserBackpack2)
+    await model.Schema.from_db(db, UserProfile)
 
 
 @pytest.mark.asyncio
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = 0  # "database: `user_id` bigint(10) NOT NULL COMMENT 'User ID'"
-        level: int = 1  # "database: `level` int(10) NOT NULL COMMENT 'User level'"
-        coins: int = 0  # "database: `{}` int(10) NOT NULL COMMENT 'User coins'"
+        user_id: int = model.field(field_cls=model.IntField)
+        level: int = model.field(field_cls=model.IntField, default=1)
+        coins: int = model.field(field_cls=model.IntField)
 
-        __table_unique_keys: typing.ClassVar = ((user_id,),)
-        __table_index_keys: typing.ClassVar = (
+        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_index_keys: typing.ClassVar = (
             (
                 User.created_at,
                 User.updated_at,
@@ -238,8 +340,8 @@ async def test_migrate():
         "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
     )
     # make migration
-    old_schema = await Schema.from_db(db, UserProfile)
-    migration: Migration = UserProfile.schema - old_schema
+    old_schema = await model.Schema.from_db(db, UserProfile)
+    migration: model.Migration = UserProfile.schema - old_schema
     assert len(migration.add_fields) == 1
     assert migration.add_fields[0].name == "level"
     assert len(migration.drop_fields) == 1
@@ -250,8 +352,8 @@ async def test_migrate():
     assert migration.drop_indexes[0].fields[0].name == "group_id"
     # migrate
     await db.execute(migration.to_sql())
-    assert UserProfile.schema == await Schema.from_db(db, UserProfile)
+    assert UserProfile.schema == await model.Schema.from_db(db, UserProfile)
     # down migrate
-    await db.execute((-migration).to_sql())
-    assert old_schema == await Schema.from_db(db, UserProfile)
-    await db.execute((-(UserProfile.schema - None)).to_sql())
+    await db.execute((~migration).to_sql())
+    assert old_schema == await model.Schema.from_db(db, UserProfile)
+    await db.execute((~(UserProfile.schema - None)).to_sql())

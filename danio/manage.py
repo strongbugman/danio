@@ -33,7 +33,7 @@ async def make_migration(
         migration_sql = migration.to_sql()
         if migration_sql:
             sqls.append(migration_sql)
-            down_sqls.append((-migration).to_sql())
+            down_sqls.append((~migration).to_sql())
     if len(sqls) == 2:
         logging.info("No migration detected")
         return ""
