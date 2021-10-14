@@ -118,7 +118,16 @@ async def test_sql():
     assert not await User.get(offset=11)
     # count
     assert (await User.count()) == 11
+    # save with special fields only
+    u = await User.get()
+    u.name = "tester"
+    u.gender = u.Gender.OTHER
+    u = await u.save(fields=[User.name])
+    nu = await User.get(User.id == u.id)
+    assert nu.name == "tester"
+    assert nu.gender == User.Gender.MALE
     # update
+    u = await User.get()
     u.name = "admin_user"
     await u.save()
     assert u.name == "admin_user"
@@ -253,6 +262,22 @@ async def test_bulk_operations():
     )
     for i, u in enumerate(users):
         assert u.id == i + 100
+    # update
+    users = await User.select()
+    for user in users:
+        user.name += f"_updated_{user.id}"
+    await User.bulk_update(users)
+    for user in await User.select():
+        assert user.name.endswith(f"_updated_{user.id}")
+    # update with special fields
+    users = await User.select()
+    for user in users:
+        user.name += f"_updated_{user.id}"
+        user.gender = User.Gender.OTHER
+    await User.bulk_update(users, fields=(User.name,))
+    for user in await User.select():
+        assert user.name.endswith(f"_updated_{user.id}")
+        assert user.gender == User.gender.default
 
 
 @pytest.mark.asyncio

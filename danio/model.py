@@ -36,14 +36,6 @@ class Field:
     COMMENT_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"COMMENT '(.*)'")
     NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"^`([^ ,]*)`")
     TYPE: typing.ClassVar[str] = ""
-    ESCAPE_TABLE: typing.ClassVar[typing.List[str]] = [chr(x) for x in range(128)]
-    ESCAPE_TABLE[0] = "\\0"
-    ESCAPE_TABLE[ord("\\")] = "\\\\"
-    ESCAPE_TABLE[ord("\n")] = "\\n"
-    ESCAPE_TABLE[ord("\r")] = "\\r"
-    ESCAPE_TABLE[ord("\032")] = "\\Z"
-    ESCAPE_TABLE[ord('"')] = '\\"'
-    ESCAPE_TABLE[ord("'")] = "\\'"
 
     name: str = ""
     model_name: str = ""
@@ -527,12 +519,17 @@ class Model:
     @property
     def primary(self) -> int:
         assert self.schema.primary_field
-        return getattr(self, self.schema.primary_field.model_name)
+        return self.schema.primary_field.to_database(
+            getattr(self, self.schema.primary_field.model_name)
+        )
 
-    def dump(self) -> typing.Dict[str, typing.Any]:
+    def dump(self, fields: typing.Iterable[Field] = ()) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
         data = {}
+        field_names = {f.name for f in fields}
         for f in self.schema.fields:
+            if field_names and f.name not in field_names:
+                continue
             data[f.name] = f.to_database(getattr(self, f.model_name))
 
         return data
@@ -561,22 +558,24 @@ class Model:
         pass
 
     async def save(
-        self,
+        self: MODEL_TV,
         database: typing.Optional[Database] = None,
+        fields: typing.Iterable[Field] = (),
         force_insert=False,
-    ):
+    ) -> MODEL_TV:
         assert self.schema.primary_field
 
         await self.before_save()
-        data = self.dump()
-        dumped_primary_value = data.pop(self.schema.primary_field.name)
+        data = self.dump(fields=fields)
+        if self.schema.primary_field.name in data:
+            data.pop(self.schema.primary_field.name)
         if self.primary and not force_insert:
             await Update(self.__class__, data=data).where(
                 self.schema.primary_field == self.primary  # type: ignore
             ).exec()
         else:
             if self.primary and force_insert:
-                data[self.schema.primary_field.name] = dumped_primary_value
+                data[self.schema.primary_field.name] = self.primary
             elif not self.primary and force_insert:
                 raise ValueError("Force insert with zero id")
             setattr(
@@ -585,6 +584,7 @@ class Model:
                 await Insert(self.__class__, database=database, data=[data]).exec(),
             )
         await self.after_save()
+        return self
 
     async def delete(
         self,
@@ -712,9 +712,9 @@ class Model:
     @classmethod
     async def bulk_create(
         cls: typing.Type[MODEL_TV],
-        instances: typing.Iterator[MODEL_TV],
+        instances: typing.Iterable[MODEL_TV],
         database: typing.Optional[Database] = None,
-    ) -> typing.Iterator[MODEL_TV]:
+    ) -> typing.Iterable[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
             await ins.before_save()
@@ -727,6 +727,30 @@ class Model:
         for i, ins in enumerate(instances):
             if not ins.id:
                 setattr(ins, cls.schema.primary_field.model_name, first_id + i)
+
+        for ins in instances:
+            await ins.after_save()
+        return instances
+
+    @classmethod
+    async def bulk_update(
+        cls: typing.Type[MODEL_TV],
+        instances: typing.Iterable[MODEL_TV],
+        fields: typing.Iterable[Field] = (),
+        database: typing.Optional[Database] = None,
+    ) -> typing.Iterable[MODEL_TV]:
+        assert cls.schema.primary_field
+        for ins in instances:
+            await ins.before_save()
+
+        data = []
+        for ins in instances:
+            data.append(ins.dump(fields=fields))
+            data[-1][cls.schema.primary_field.name] = ins.primary
+
+        await UpdateByID(
+            cls, database=database, data=data, primary_key=cls.schema.primary_field.name
+        ).exec()
 
         for ins in instances:
             await ins.after_save()
@@ -962,7 +986,7 @@ class Insert(SQLBuilder):
 @dataclasses.dataclass
 class Update(SQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
-    data: typing.Dict[str, str] = dataclasses.field(default=dict)  # type: ignore
+    data: typing.Dict[str, str] = dataclasses.field(default_factory=dict)
 
     async def exec(self) -> int:
         assert self.database
@@ -975,3 +999,31 @@ class Update(SQLBuilder):
             sql += f" WHERE {self._where.to_sql()}"
             self._vars.update(self._where._vars)
         return sql + ";"
+
+
+@dataclasses.dataclass
+class UpdateByID(SQLBuilder):
+    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
+    data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
+    primary_key: str = ""
+
+    async def exec(self) -> int:
+        assert self.database
+        assert self.database
+        sql = self.to_sql()
+        values = [self._vars]
+        for d in self.data[1:]:
+            self._vars = {}
+            self._var_index = 0
+            for k, v in sorted(d.items(), key=lambda x: x[0]):
+                if k != self.primary_key:
+                    self.mark(v)
+            self.mark(d[self.primary_key])
+            values.append(self._vars)
+        await self.database.execute_many(sql, values)
+        return 1
+
+    def to_sql(self):
+        assert self.data
+        assert self.primary_key
+        return f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in sorted(self.data[0].items(), key=lambda x: x[0]) if k != self.primary_key])} WHERE {self.primary_key}=:{self.mark(self.data[0][self.primary_key])};"
