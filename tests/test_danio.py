@@ -131,7 +131,7 @@ async def test_sql():
     u.name = "admin_user"
     await u.save()
     assert u.name == "admin_user"
-    await User.update(User.id == u.id, name=User.name.to_database("admin_user2"))
+    await User.update_many(User.id == u.id, name=User.name.to_database("admin_user2"))
     assert (await User.get()).name == "admin_user2"
     # read
     u = (await User.select(User.id == u.id))[0]
@@ -148,20 +148,18 @@ async def test_sql():
     assert await User.select(
         ((User.id != 1) | (User.name != "")) & (User.gender == User.Gender.MALE)
     )
+    assert await User.where(User.id != 1, User.name != "", is_and=False).fetch_all()
     assert (
-        await User._select()
-        .where(User.id != 1, User.name != "", is_and=False)
-        .fetch_all()
-    )
-    assert (
-        not await User._select()
-        .where(User.id != 1, User.name != "", is_and=False)
+        not await User.where(User.id != 1, User.name != "", is_and=False)
         .where(User.gender == User.Gender.FEMALE)
         .fetch_all()
     )
     assert await User.select(User.name.like("test_%"))
     assert await User.select(User.gender.contains([g.value for g in User.Gender]))
     assert not (await User.select(fields=[User.id]))[0].name
+    # delete many
+    await User.delete_many(User.id >= 1)
+    assert not await User.select()
 
 
 @pytest.mark.asyncio

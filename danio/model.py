@@ -70,11 +70,8 @@ class Field:
     def __hash__(self):
         return hash((self.name, self.type))
 
-    def __eq__(self, other: object) -> typing.Union[bool, Condition]:  # type: ignore
-        if isinstance(other, Field):
-            return self.__hash__() == other.__hash__()
-        else:
-            return Condition(field=self, value=other, operetor=Condition.Operator.EQ)
+    def __eq__(self, other: typing.Any) -> Condition:  # type: ignore[override]
+        return Condition(field=self, value=other, operetor=Condition.Operator.EQ)
 
     def __gt__(self, other: object) -> Condition:
         return Condition(field=self, value=other, operetor=Condition.Operator.GT)
@@ -88,7 +85,7 @@ class Field:
     def __le__(self, other: object) -> Condition:
         return Condition(field=self, value=other, operetor=Condition.Operator.LE)
 
-    def __ne__(self, other: object) -> Condition:  # type: ignore
+    def __ne__(self, other: object) -> Condition:  # type: ignore[override]
         return Condition(field=self, value=other, operetor=Condition.Operator.NE)
 
     def contains(self, values: typing.Iterable) -> Condition:
@@ -267,7 +264,7 @@ class Schema:
     FIELD_NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"`([^ ,]*)`")
 
     name: str
-    primary_field: typing.Optional[Field] = None
+    primary_field: Field = Field()
     indexes: typing.Set[Index] = dataclasses.field(default_factory=set)
     fields: typing.Set[Field] = dataclasses.field(default_factory=set)
     abstracted: bool = False
@@ -570,9 +567,11 @@ class Model:
         if self.schema.primary_field.name in data:
             data.pop(self.schema.primary_field.name)
         if self.primary and not force_insert:
-            await Update(self.__class__, data=data).where(
-                self.schema.primary_field == self.primary  # type: ignore
-            ).exec()
+            await self.__class__.update_many(
+                self.schema.primary_field == self.primary,
+                database=database,
+                **data,
+            )
         else:
             if self.primary and force_insert:
                 data[self.schema.primary_field.name] = self.primary
@@ -588,12 +587,11 @@ class Model:
 
     async def delete(
         self,
-        *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
     ) -> bool:
         await self.before_delete()
-        deleted = (
-            await self.__class__._delete(database=database).where(*conditions).exec()
+        deleted = await self.__class__.delete_many(
+            self.schema.primary_field == self.primary, database=database
         )
         await self.after_delete()
         return deleted
@@ -623,19 +621,16 @@ class Model:
         return instances
 
     @classmethod
-    def _select(
+    def where(
         cls,
+        *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
+        is_and=True,
     ) -> Select:
-        return Select(cls, fields=fields, database=database)
-
-    @classmethod
-    def _delete(
-        cls,
-        database: typing.Optional[Database] = None,
-    ) -> Delete:
-        return Delete(cls, database=database)
+        return Select(cls, fields=fields, database=database).where(
+            *conditions, is_and=is_and
+        )
 
     @classmethod
     async def select(
@@ -701,13 +696,21 @@ class Model:
         return await Select(cls, database=database).where(*conditions).fetch_count()
 
     @classmethod
-    async def update(
+    async def update_many(
         cls: typing.Type[MODEL_TV],
         *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
         **data: str,
     ) -> int:
         return await Update(cls, database=database, data=data).where(*conditions).exec()
+
+    @classmethod
+    async def delete_many(
+        cls: typing.Type[MODEL_TV],
+        *conditions: typing.Union[Condition, ConditionGroup],
+        database: typing.Optional[Database] = None,
+    ) -> bool:
+        return await Delete(cls, database=database).where(*conditions).exec()
 
     @classmethod
     async def bulk_create(
@@ -745,6 +748,7 @@ class Model:
 
         data = []
         for ins in instances:
+            assert ins.primary
             data.append(ins.dump(fields=fields))
             data[-1][cls.schema.primary_field.name] = ins.primary
 
@@ -1008,7 +1012,6 @@ class UpdateByID(SQLBuilder):
     primary_key: str = ""
 
     async def exec(self) -> int:
-        assert self.database
         assert self.database
         sql = self.to_sql()
         values = [self._vars]
