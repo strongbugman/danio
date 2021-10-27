@@ -7,10 +7,10 @@ import glob
 import os
 import typing
 
-import pymysql
 import pytest
 
 from danio import Database, ValidateException, manage, model
+
 
 db = Database(
     "mysql://root:app@localhost:3306/",
@@ -104,20 +104,24 @@ async def test_sql():
     assert u.id > 0
     assert u.gender is u.Gender.MALE
     # read
-    u = await User.get(User.id == u.id)
-    assert u
+    assert await User.get(User.id == u.id)
+    assert await User.where(User.id == u.id).fetch_one()
     # read with limit
     assert await User.select(User.id == u.id, limit=1)
+    assert await User.where(User.id == u.id).limit(1).fetch_all()
     # read with order by
-    u = (await User.select(limit=1, order_by=User.name, order_by_asc=False))[0]
-    assert u.id
+    assert (await User.select(limit=1, order_by=User.name, order_by_asc=False))[0]
+    assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
     # read with page
     for _ in range(10):
         await User(name="test_users").save()
     assert await User.get(offset=10)
     assert not await User.get(offset=11)
+    assert await User.where().limit(1).offset(10).fetch_one()
+    assert not await User.where().limit(1).offset(11).fetch_one()
     # count
     assert (await User.count()) == 11
+    assert await User.where().fetch_count() == 11
     # save with special fields only
     u = await User.get()
     u.name = "tester"
@@ -139,12 +143,15 @@ async def test_sql():
     # delete
     await u.delete()
     assert not await User.select(User.id == u.id)
+    u = await User.get()
+    await User.where(User.id == u.id).delete()
+    assert not await User.select(User.id == u.id)
     # create with id
     u = User(id=101, name="test_user")
     await u.save(force_insert=True)
     u = (await User.select(User.id == u.id))[0]
     assert u.name == "test_user"
-    # sql builder
+    # multi where condition
     assert await User.select(
         ((User.id != 1) | (User.name != "")) & (User.gender == User.Gender.MALE)
     )
@@ -160,6 +167,12 @@ async def test_sql():
     # delete many
     await User.delete_many(User.id >= 1)
     assert not await User.select()
+    # transation
+    db = User.get_database(User.Operation.UPDATE, User.table_name)
+    async with db.transaction():
+        for u in await User.select(database=db):
+            u.name += "_updated"
+            u.save(fields=[User.name], database=db)
 
 
 @pytest.mark.asyncio
@@ -248,18 +261,12 @@ async def test_bulk_operations():
     users = await User.bulk_create([User(name=f"user_{i}") for i in range(10)])
     for i, u in enumerate(users):
         assert u.id == i + 1 + 10
-    # with conflict
-    users = [User(name=f"user_{i}") for i in range(10)]
-    users[-1].id = 2
-    with pytest.raises(pymysql.err.IntegrityError):
-        await User.bulk_create(users)
-    assert await User.count() == 20
     # with special id
-    users = await User.bulk_create(
-        [User(id=100 + i, name=f"user_{i}") for i in range(10)]
-    )
-    for i, u in enumerate(users):
-        assert u.id == i + 100
+    users = [User(name=f"user_100_{i}") for i in range(10)]
+    users[1].id = 34
+    await User.bulk_create(users)
+    assert users[1].id == 34
+    assert users[9].id == 42
     # update
     users = await User.select()
     for user in users:

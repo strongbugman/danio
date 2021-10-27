@@ -15,7 +15,7 @@ import typing
 from datetime import date, datetime, timedelta
 from functools import reduce
 
-from .exception import SchemaException, ValidateException
+from .exception import OperationException, SchemaException, ValidateException
 from .utils import class_property
 
 if typing.TYPE_CHECKING:
@@ -627,8 +627,8 @@ class Model:
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
         is_and=True,
-    ) -> Select:
-        return Select(cls, fields=fields, database=database).where(
+    ) -> Curd:
+        return Curd(cls, fields=fields, database=database).where(
             *conditions, is_and=is_and
         )
 
@@ -646,7 +646,7 @@ class Model:
         offset=0,
     ) -> typing.List[MODEL_TV]:
         return (
-            await Select(  # type: ignore
+            await Curd(  # type: ignore
                 cls,
                 fields=fields,
                 _order_by=order_by,
@@ -673,7 +673,7 @@ class Model:
         offset=0,
     ) -> typing.Optional[MODEL_TV]:
         return (
-            await Select(  # type: ignore
+            await Curd(  # type: ignore
                 cls,
                 fields=fields,
                 _order_by=order_by,
@@ -691,9 +691,14 @@ class Model:
     async def count(
         cls: typing.Type[MODEL_TV],
         *conditions: typing.Union[Condition, ConditionGroup],
+        fields: typing.Sequence[Field] = tuple(),
         database: typing.Optional[Database] = None,
     ) -> int:
-        return await Select(cls, database=database).where(*conditions).fetch_count()
+        return (
+            await Curd(cls, database=database, fields=fields)
+            .where(*conditions)
+            .fetch_count()
+        )
 
     @classmethod
     async def update_many(
@@ -702,7 +707,7 @@ class Model:
         database: typing.Optional[Database] = None,
         **data: str,
     ) -> int:
-        return await Update(cls, database=database, data=data).where(*conditions).exec()
+        return await Curd(cls, database=database).where(*conditions).update(**data)
 
     @classmethod
     async def delete_many(
@@ -710,7 +715,7 @@ class Model:
         *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
     ) -> bool:
-        return await Delete(cls, database=database).where(*conditions).exec()
+        return await Curd(cls, database=database).where(*conditions).delete()
 
     @classmethod
     async def bulk_create(
@@ -722,14 +727,13 @@ class Model:
         for ins in instances:
             await ins.before_save()
 
-        data = []
-        for ins in instances:
-            data.append(ins.dump())
+        data = [ins.dump() for ins in instances]
+        next_ins_id = await Insert(cls, database=database, data=data).exec()
 
-        first_id = await Insert(cls, database=database, data=data).exec()
-        for i, ins in enumerate(instances):
-            if not ins.id:
-                setattr(ins, cls.schema.primary_field.model_name, first_id + i)
+        for ins in instances:
+            if not ins.primary:
+                setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
+            next_ins_id = ins.primary + 1
 
         for ins in instances:
             await ins.after_save()
@@ -748,7 +752,8 @@ class Model:
 
         data = []
         for ins in instances:
-            assert ins.primary
+            if not ins.primary:
+                raise OperationException("Need primary")
             data.append(ins.dump(fields=fields))
             data[-1][cls.schema.primary_field.name] = ins.primary
 
@@ -840,8 +845,8 @@ class SQLBuilder:
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.READ
 
     model: typing.Type[Model]
-    _where: typing.Optional[typing.Union[ConditionGroup, Condition]] = None
     database: typing.Optional[Database] = None
+    _where: typing.Optional[typing.Union[ConditionGroup, Condition]] = None
     _var_index: int = 0
     _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
@@ -872,7 +877,7 @@ class SQLBuilder:
 
 
 @dataclasses.dataclass
-class Select(SQLBuilder):
+class Curd(SQLBuilder):
     fields: typing.Sequence[Field] = tuple()
     _limit: int = 0
     _offset: int = 0
@@ -883,11 +888,13 @@ class Select(SQLBuilder):
 
     async def fetch_all(self) -> typing.List[Model]:
         assert self.database
-        return self.model.load(await self.database.fetch_all(self.to_sql(), self._vars))
+        return self.model.load(
+            await self.database.fetch_all(self.to_select_sql(), self._vars)
+        )
 
     async def fetch_one(self) -> typing.Optional[Model]:
         assert self.database
-        data = await self.database.fetch_one(self.to_sql(), self._vars)
+        data = await self.database.fetch_one(self.to_select_sql(), self._vars)
         if data:
             return self.model.load([data])[0]
         else:
@@ -895,34 +902,48 @@ class Select(SQLBuilder):
 
     async def fetch_count(self) -> int:
         assert self.database
-        data = await self.database.fetch_one(self.to_sql(count=True), self._vars)
+        data = await self.database.fetch_one(self.to_select_sql(count=True), self._vars)
         if data:
             return data[0]
         else:
             return 0
 
-    def limit(self, n: int) -> Select:
+    async def delete(self) -> bool:
+        self.database = self.model.get_database(
+            self.model.Operation.DELETE, self.model.table_name
+        )
+        return bool(await self.database.execute(self.to_delete_sql(), self._vars))
+
+    async def update(self, **data) -> int:
+        self.database = self.model.get_database(
+            self.model.Operation.UPDATE, self.model.table_name
+        )
+        return await self.database.execute(self.to_update_sql(data), self._vars)
+
+    def limit(self, n: int) -> Curd:
         self._limit = int(n)
         return self
 
-    def offset(self, n: int) -> Select:
+    def offset(self, n: int) -> Curd:
+        if not self._limit:
+            raise OperationException("Empty limit")
         self._offset = int(n)
         return self
 
-    def order_by(self, f: Field, asc=True) -> Select:
+    def order_by(self, f: Field, asc=True) -> Curd:
         self._order_by = f
         self._order_by_asc = asc
         return self
 
-    def for_update(self) -> Select:
+    def for_update(self) -> Curd:
         self._for_update = True
         return self
 
-    def for_share(self) -> Select:
+    def for_share(self) -> Curd:
         self._for_share = True
         return self
 
-    def to_sql(self, count=False) -> str:
+    def to_select_sql(self, count=False) -> str:
         if not count:
             sql = f"SELECT {', '.join(f'`{f.name}`' for f in self.fields or self.model.schema.fields)} FROM `{self.model.table_name}`"
         else:
@@ -944,17 +965,15 @@ class Select(SQLBuilder):
 
         return sql + ";"
 
-
-@dataclasses.dataclass
-class Delete(SQLBuilder):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.DELETE
-
-    async def exec(self) -> bool:
-        assert self.database
-        return bool(await self.database.execute(self.to_sql(), self._vars))
-
-    def to_sql(self):
+    def to_delete_sql(self):
         sql = f"DELETE from `{self.model.table_name}`"
+        if self._where:
+            sql += f" WHERE {self._where.to_sql()}"
+            self._vars.update(self._where._vars)
+        return sql + ";"
+
+    def to_update_sql(self, data: typing.Dict[str, typing.Any]):
+        sql = f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in data.items()])}"
         if self._where:
             sql += f" WHERE {self._where.to_sql()}"
             self._vars.update(self._where._vars)
@@ -988,24 +1007,6 @@ class Insert(SQLBuilder):
 
 
 @dataclasses.dataclass
-class Update(SQLBuilder):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
-    data: typing.Dict[str, str] = dataclasses.field(default_factory=dict)
-
-    async def exec(self) -> int:
-        assert self.database
-        return await self.database.execute(self.to_sql(), self._vars)
-
-    def to_sql(self):
-        assert self.data
-        sql = f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in self.data.items()])}"
-        if self._where:
-            sql += f" WHERE {self._where.to_sql()}"
-            self._vars.update(self._where._vars)
-        return sql + ";"
-
-
-@dataclasses.dataclass
 class UpdateByID(SQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
     data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
@@ -1023,7 +1024,8 @@ class UpdateByID(SQLBuilder):
                     self.mark(v)
             self.mark(d[self.primary_key])
             values.append(self._vars)
-        await self.database.execute_many(sql, values)
+        async with self.database.transaction():
+            await self.database.execute_many(sql, values)
         return 1
 
     def to_sql(self):

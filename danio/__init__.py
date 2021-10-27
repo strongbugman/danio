@@ -1,6 +1,6 @@
 from . import manage
 from .database import Database
-from .exception import SchemaException, ValidateException
+from .exception import SchemaException, ValidateException, OperationException
 from .model import (
     MODEL_TV,
     CharField,
@@ -24,6 +24,7 @@ __all__ = (
     "Database",
     "SchemaException",
     "ValidateException",
+    "OperationException",
     "Model",
     "MODEL_TV",
     "Schema",
