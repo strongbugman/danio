@@ -25,7 +25,7 @@ if typing.TYPE_CHECKING:
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
-SQL_BUILDER_TV = typing.TypeVar("SQL_BUILDER_TV", bound="SQLBuilder")
+CURD_TV = typing.TypeVar("CURD_TV", bound="Curd")
 
 
 @dataclasses.dataclass
@@ -87,6 +87,8 @@ class Field:
 
     def __ne__(self, other: object) -> Condition:  # type: ignore[override]
         return Condition(field=self, value=other, operetor=Condition.Operator.NE)
+
+    # def __add__(self, other: object)
 
     def contains(self, values: typing.Iterable) -> Condition:
         return Condition(field=self, value=values, operetor=Condition.Operator.IN)
@@ -580,7 +582,9 @@ class Model:
             setattr(
                 self,
                 self.schema.primary_field.model_name,
-                await Insert(self.__class__, database=database, data=[data]).exec(),
+                await Insert(
+                    model=self.__class__, database=database, data=[data]
+                ).exec(),
             )
         await self.after_save()
         return self
@@ -622,13 +626,13 @@ class Model:
 
     @classmethod
     def where(
-        cls,
+        cls: typing.Type[MODEL_TV],
         *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
         is_and=True,
-    ) -> Curd:
-        return Curd(cls, fields=fields, database=database).where(
+    ) -> Curd[MODEL_TV]:
+        return Curd(model=cls, fields=fields, database=database).where(
             *conditions, is_and=is_and
         )
 
@@ -647,7 +651,7 @@ class Model:
     ) -> typing.List[MODEL_TV]:
         return (
             await Curd(  # type: ignore
-                cls,
+                model=cls,
                 fields=fields,
                 _order_by=order_by,
                 _order_by_asc=order_by_asc,
@@ -674,7 +678,7 @@ class Model:
     ) -> typing.Optional[MODEL_TV]:
         return (
             await Curd(  # type: ignore
-                cls,
+                model=cls,
                 fields=fields,
                 _order_by=order_by,
                 database=database,
@@ -695,7 +699,7 @@ class Model:
         database: typing.Optional[Database] = None,
     ) -> int:
         return (
-            await Curd(cls, database=database, fields=fields)
+            await Curd(model=cls, database=database, fields=fields)
             .where(*conditions)
             .fetch_count()
         )
@@ -707,7 +711,9 @@ class Model:
         database: typing.Optional[Database] = None,
         **data: str,
     ) -> int:
-        return await Curd(cls, database=database).where(*conditions).update(**data)
+        return (
+            await Curd(model=cls, database=database).where(*conditions).update(**data)
+        )
 
     @classmethod
     async def delete_many(
@@ -715,7 +721,7 @@ class Model:
         *conditions: typing.Union[Condition, ConditionGroup],
         database: typing.Optional[Database] = None,
     ) -> bool:
-        return await Curd(cls, database=database).where(*conditions).delete()
+        return await Curd(model=cls, database=database).where(*conditions).delete()
 
     @classmethod
     async def bulk_create(
@@ -728,7 +734,7 @@ class Model:
             await ins.before_save()
 
         data = [ins.dump() for ins in instances]
-        next_ins_id = await Insert(cls, database=database, data=data).exec()
+        next_ins_id = await Insert(model=cls, database=database, data=data).exec()
 
         for ins in instances:
             if not ins.primary:
@@ -758,7 +764,10 @@ class Model:
             data[-1][cls.schema.primary_field.name] = ins.primary
 
         await UpdateByID(
-            cls, database=database, data=data, primary_key=cls.schema.primary_field.name
+            model=cls,
+            database=database,
+            data=data,
+            primary_key=cls.schema.primary_field.name,
         ).exec()
 
         for ins in instances:
@@ -768,7 +777,30 @@ class Model:
 
 # query builder
 @dataclasses.dataclass
-class Condition:
+class SQLMarker:
+    _var_index: int = 0
+    _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
+
+    def mark(self, value: typing.Any) -> str:
+        k = f"var{self._var_index}"
+        self._vars[k] = value
+        self._var_index += 1
+        return k
+
+
+@dataclasses.dataclass
+class Expression:
+    class Operator(enum.Enum):
+        ADD = "+"
+        SUB = "-"
+
+    field: Field
+    value: typing.Any
+    operator: Operator
+
+
+@dataclasses.dataclass
+class Condition(SQLMarker):
     class Operator(enum.Enum):
         EQ = "="
         NE = "!="
@@ -779,11 +811,9 @@ class Condition:
         LK = "LIKE"
         IN = "IN"
 
-    field: Field
-    value: typing.Any
-    operetor: Operator
-    _var_index: int = 0
-    _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
+    field: Field = Field()
+    value: typing.Any = None
+    operetor: Operator = Operator.EQ
 
     def __and__(self, other: typing.Union[Condition, ConditionGroup]) -> ConditionGroup:
         if isinstance(other, (Condition, ConditionGroup)):
@@ -797,25 +827,19 @@ class Condition:
         else:
             raise NotImplementedError()
 
-    def mark(self, value: typing.Any) -> str:
-        k = f"where{self._var_index}"
-        self._vars[k] = value.value if isinstance(value, enum.Enum) else value
-        self._var_index += 1
-        return k
-
     def to_sql(self) -> str:
         if self.operetor == self.Operator.IN:
             return f"`{self.field.name}` {self.operetor.value} ({', '.join(':' + self.mark(v) for v in self.value)})"
         else:
-            return f"`{self.field.name}` {self.operetor.value} :{self.mark(self.value)}"
+            return f"`{self.field.name}` {self.operetor.value} :{self.mark(self.field.to_database(self.value))}"
 
 
 @dataclasses.dataclass
-class ConditionGroup:
-    conditions: typing.List[typing.Union[Condition, ConditionGroup]]
+class ConditionGroup(SQLMarker):
+    conditions: typing.List[
+        typing.Union[Condition, ConditionGroup]
+    ] = dataclasses.field(default_factory=list)
     is_and: bool = False
-    _var_index: int = 0
-    _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
     def __and__(self, other: typing.Union[Condition, ConditionGroup]) -> ConditionGroup:
         if isinstance(other, (Condition, ConditionGroup)):
@@ -841,44 +865,30 @@ class ConditionGroup:
 
 
 @dataclasses.dataclass
-class SQLBuilder:
+class BaseSQLBuilder(SQLMarker):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.READ
 
-    model: typing.Type[Model]
+    model: typing.Optional[typing.Type[Model]] = None
     database: typing.Optional[Database] = None
-    _where: typing.Optional[typing.Union[ConditionGroup, Condition]] = None
-    _var_index: int = 0
-    _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
-    def __post_init__(self):
+    def get_database(self, operation: typing.Optional[Model.Operation] = None):
+        assert self.model
         if not self.database:
-            self.database = self.model.get_database(
-                self.OPERATION, self.model.table_name
+            return self.model.get_database(
+                operation or self.OPERATION, self.model.table_name
             )
-
-    def mark(self, value: typing.Any) -> str:
-        k = f"var{self._var_index}"
-        self._vars[k] = value
-        self._var_index += 1
-        return k
-
-    def where(
-        self: SQL_BUILDER_TV,
-        *conditions: typing.Union[Condition, ConditionGroup],
-        is_and=True,
-    ) -> SQL_BUILDER_TV:
-        if conditions:
-            _where = reduce(lambda c1, c2: c1 & c2 if is_and else c1 | c2, conditions)
-            if self._where:
-                self._where = self._where & _where
-            else:
-                self._where = _where
-        return self
+        else:
+            return self.database
 
 
 @dataclasses.dataclass
-class Curd(SQLBuilder):
+class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
+    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.READ
+
+    model: typing.Optional[typing.Type[MODEL_TV]] = None
     fields: typing.Sequence[Field] = tuple()
+    database: typing.Optional[Database] = None
+    _where: typing.Optional[typing.Union[ConditionGroup, Condition]] = None
     _limit: int = 0
     _offset: int = 0
     _order_by: typing.Optional[Field] = None
@@ -886,39 +896,57 @@ class Curd(SQLBuilder):
     _for_update: bool = False
     _for_share: bool = False
 
-    async def fetch_all(self) -> typing.List[Model]:
-        assert self.database
+    async def fetch_all(self) -> typing.List[MODEL_TV]:
+        assert self.model
         return self.model.load(
-            await self.database.fetch_all(self.to_select_sql(), self._vars)
+            await self.get_database(Model.Operation.READ).fetch_all(
+                self.to_select_sql(), self._vars
+            )
         )
 
     async def fetch_one(self) -> typing.Optional[Model]:
-        assert self.database
-        data = await self.database.fetch_one(self.to_select_sql(), self._vars)
+        assert self.model
+        data = await self.get_database(Model.Operation.READ).fetch_one(
+            self.to_select_sql(), self._vars
+        )
         if data:
             return self.model.load([data])[0]
         else:
             return None
 
     async def fetch_count(self) -> int:
-        assert self.database
-        data = await self.database.fetch_one(self.to_select_sql(count=True), self._vars)
+        data = await self.get_database(Model.Operation.READ).fetch_one(
+            self.to_select_sql(count=True), self._vars
+        )
         if data:
             return data[0]
         else:
             return 0
 
     async def delete(self) -> bool:
-        self.database = self.model.get_database(
-            self.model.Operation.DELETE, self.model.table_name
+        return bool(
+            await self.get_database(Model.Operation.DELETE).execute(
+                self.to_delete_sql(), self._vars
+            )
         )
-        return bool(await self.database.execute(self.to_delete_sql(), self._vars))
 
     async def update(self, **data) -> int:
-        self.database = self.model.get_database(
-            self.model.Operation.UPDATE, self.model.table_name
+        return await self.get_database(Model.Operation.UPDATE).execute(
+            self.to_update_sql(data), self._vars
         )
-        return await self.database.execute(self.to_update_sql(data), self._vars)
+
+    def where(
+        self: CURD_TV,
+        *conditions: typing.Union[Condition, ConditionGroup],
+        is_and=True,
+    ) -> CURD_TV:
+        if conditions:
+            _where = reduce(lambda c1, c2: c1 & c2 if is_and else c1 | c2, conditions)
+            if self._where:
+                self._where = self._where & _where
+            else:
+                self._where = _where
+        return self
 
     def limit(self, n: int) -> Curd:
         self._limit = int(n)
@@ -944,11 +972,13 @@ class Curd(SQLBuilder):
         return self
 
     def to_select_sql(self, count=False) -> str:
+        assert self.model
         if not count:
             sql = f"SELECT {', '.join(f'`{f.name}`' for f in self.fields or self.model.schema.fields)} FROM `{self.model.table_name}`"
         else:
             sql = f"SELECT COUNT(*) FROM {self.model.table_name}"
         if self._where:
+            self._where._var_index = self._var_index + 1
             sql += f" WHERE {self._where.to_sql()}"
             self._vars.update(self._where._vars)
         if not count:
@@ -966,28 +996,31 @@ class Curd(SQLBuilder):
         return sql + ";"
 
     def to_delete_sql(self):
+        assert self.model
         sql = f"DELETE from `{self.model.table_name}`"
         if self._where:
+            self._where._var_index = self._var_index + 1
             sql += f" WHERE {self._where.to_sql()}"
             self._vars.update(self._where._vars)
         return sql + ";"
 
     def to_update_sql(self, data: typing.Dict[str, typing.Any]):
+        assert self.model
         sql = f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in data.items()])}"
         if self._where:
+            self._where._var_index = self._var_index + 1
             sql += f" WHERE {self._where.to_sql()}"
             self._vars.update(self._where._vars)
         return sql + ";"
 
 
 @dataclasses.dataclass
-class Insert(SQLBuilder):
+class Insert(BaseSQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.CREATE
     data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
 
     async def exec(self) -> int:
-        assert self.database
-        return await self.database.execute(self.to_sql(), self._vars)
+        return await self.get_database().execute(self.to_sql(), self._vars)
 
     def to_sql(self):
         assert self.data
@@ -1007,13 +1040,13 @@ class Insert(SQLBuilder):
 
 
 @dataclasses.dataclass
-class UpdateByID(SQLBuilder):
+class UpdateByID(BaseSQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
     data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
     primary_key: str = ""
 
     async def exec(self) -> int:
-        assert self.database
+        database = self.get_database()
         sql = self.to_sql()
         values = [self._vars]
         for d in self.data[1:]:
@@ -1024,11 +1057,12 @@ class UpdateByID(SQLBuilder):
                     self.mark(v)
             self.mark(d[self.primary_key])
             values.append(self._vars)
-        async with self.database.transaction():
-            await self.database.execute_many(sql, values)
+        async with database.transaction():
+            await database.execute_many(sql, values)
         return 1
 
     def to_sql(self):
         assert self.data
         assert self.primary_key
+        assert self.model
         return f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in sorted(self.data[0].items(), key=lambda x: x[0]) if k != self.primary_key])} WHERE {self.primary_key}=:{self.mark(self.data[0][self.primary_key])};"

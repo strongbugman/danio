@@ -170,7 +170,7 @@ async def test_sql():
     # transation
     db = User.get_database(User.Operation.UPDATE, User.table_name)
     async with db.transaction():
-        for u in await User.select(database=db):
+        for u in await User.where(database=db).fetch_all():
             u.name += "_updated"
             u.save(fields=[User.name], database=db)
 
