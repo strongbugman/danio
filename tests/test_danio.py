@@ -37,6 +37,7 @@ class User(model.Model):
         OTHER = 3
 
     name: str = model.field(field_cls=model.CharField, comment="User name")
+    age: int = model.field(field_cls=model.IntField)
     created_at: datetime.datetime = model.field(
         field_cls=model.DateTimeField,
         comment="when created",
@@ -164,6 +165,11 @@ async def test_sql():
     assert await User.select(User.name.like("test_%"))
     assert await User.select(User.gender.contains([g.value for g in User.Gender]))
     assert not (await User.select(fields=[User.id]))[0].name
+    # combine condition
+    u = await User.get()
+    u.age = 2
+    await u.save()
+    assert await User.select((User.age + 1) == 3)
     # delete many
     await User.delete_many(User.id >= 1)
     assert not await User.select()
@@ -173,6 +179,37 @@ async def test_sql():
         for u in await User.where(database=db).fetch_all():
             u.name += "_updated"
             u.save(fields=[User.name], database=db)
+
+
+@pytest.mark.asyncio
+async def test_atomic_update():
+    # +1
+    u = await User(name="rails").save()
+    await User.where(User.id == u.id).update(age=User.age + 1)
+    assert (await User.get(User.id == u.id)).age == u.age + 1
+    # *1
+    await User.where(User.id == u.id).update(age=User.age * 1)
+    assert (await User.get(User.id == u.id)).age == u.age + 1
+    # /1
+    await User.where(User.id == u.id).update(age=User.age / 1)
+    assert (await User.get(User.id == u.id)).age == u.age + 1
+    # -1
+    await User.where(User.id == u.id).update(age=User.age - 1)
+    assert (await User.get(User.id == u.id)).age == u.age
+    # +self
+    u.age = 1
+    await u.save()
+    await User.where(User.id == u.id).update(age=User.age + User.age)
+    assert (await User.get(User.id == u.id)).age == u.age * 2
+    # -self
+    await User.where(User.id == u.id).update(age=User.age - User.age)
+    assert (await User.get(User.id == u.id)).age == 0
+    # combine
+    await User.where(User.id == u.id).update(age=User.age - 1 + 10)
+    assert (await User.get(User.id == u.id)).age == 9
+    # multi express
+    await User.where(User.id == u.id).update(age=User.age + 1 + (User.age / 9))
+    assert (await User.get(User.id == u.id)).age == 11
 
 
 @pytest.mark.asyncio
