@@ -113,6 +113,12 @@ async def test_sql():
     # read with order by
     assert (await User.select(limit=1, order_by=User.name, order_by_asc=False))[0]
     assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
+    assert (
+        await User.where()
+        .limit(1)
+        .order_by(User.age + User.gender, asc=False)
+        .fetch_one()
+    )
     # read with page
     for _ in range(10):
         await User(name="test_users").save()
@@ -182,7 +188,7 @@ async def test_sql():
 
 
 @pytest.mark.asyncio
-async def test_atomic_update():
+async def test_complicated_update():
     # +1
     u = await User(name="rails").save()
     await User.where(User.id == u.id).update(age=User.age + 1)
@@ -210,6 +216,16 @@ async def test_atomic_update():
     # multi express
     await User.where(User.id == u.id).update(age=User.age + 1 + (User.age / 9))
     assert (await User.get(User.id == u.id)).age == 11
+    # case
+    await User.where(User.id == u.id).update(
+        age=User.age.case(User.age > 10, 1).case(User.age < 10, 10)
+    )
+    assert (await User.get(User.id == u.id)).age == 1
+    # case default
+    await User.where(User.id == u.id).update(
+        age=User.age.case(User.age > 10, 1, default=18).case(User.age < 1, 10)
+    )
+    assert (await User.get(User.id == u.id)).age == 18
 
 
 @pytest.mark.asyncio

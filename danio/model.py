@@ -12,6 +12,7 @@ import json
 import random
 import re
 import typing
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import reduce
 
@@ -27,6 +28,7 @@ SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
 CURD_TV = typing.TypeVar("CURD_TV", bound="Curd")
 MARKER_TV = typing.TypeVar("MARKER_TV", bound="SQLMarker")
+CASE_TV = typing.TypeVar("CASE_TV", bound="SQLCase")
 
 
 @dataclasses.dataclass
@@ -71,38 +73,48 @@ class Field:
     def __hash__(self):
         return hash((self.name, self.type))
 
-    def __eq__(self, other: typing.Any) -> Expression:  # type: ignore[override]
-        return Expression(field=self, values=[(Expression.Operator.EQ, other)])
+    def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
 
-    def __gt__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.GT, other)])
+    def __gt__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.GT, other)])
 
-    def __lt__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.LT, other)])
+    def __lt__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.LT, other)])
 
-    def __ge__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.GE, other)])
+    def __ge__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.GE, other)])
 
-    def __le__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.LE, other)])
+    def __le__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.LE, other)])
 
-    def __ne__(self, other: object) -> Expression:  # type: ignore[override]
-        return Expression(field=self, values=[(Expression.Operator.NE, other)])
+    def __ne__(self, other: object) -> SQLExpression:  # type: ignore[override]
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.NE, other)])
 
-    def __add__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.ADD, other)])
+    def __add__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.ADD, other)])
 
-    def __sub__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.SUB, other)])
+    def __sub__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.SUB, other)])
 
-    def __mul__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.MUL, other)])
+    def __mul__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.MUL, other)])
 
-    def __truediv__(self, other: object) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.DIV, other)])
+    def __truediv__(self, other: object) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.DIV, other)])
 
-    def contains(self, values: typing.Iterable) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.IN, values)])
+    def contains(self, values: typing.Iterable) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.IN, values)])
+
+    def case(
+        self,
+        expression: SQLExpression,
+        value: typing.Any,
+        default: typing.Any = None,
+    ) -> SQLCase:
+        return SQLCase(field=self, default=default or self.default).case(
+            expression, value
+        )
 
     def to_sql(self) -> str:
         if not self.describe:
@@ -160,8 +172,8 @@ class CharField(Field):
 
     default: str = ""
 
-    def like(self, value: typing.Any) -> Expression:
-        return Expression(field=self, values=[(Expression.Operator.LK, value)])
+    def like(self, value: typing.Any) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.LK, value)])
 
 
 @dataclasses.dataclass(eq=False)
@@ -636,7 +648,7 @@ class Model:
     @classmethod
     def where(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
         is_and=True,
@@ -648,9 +660,9 @@ class Model:
     @classmethod
     async def select(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         fields: typing.Sequence[Field] = tuple(),
-        order_by: typing.Optional[Field] = None,
+        order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None,
         order_by_asc=False,
         database: typing.Optional[Database] = None,
         for_update=False,
@@ -677,10 +689,10 @@ class Model:
     @classmethod
     async def get(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
-        order_by: typing.Optional[Field] = None,
+        order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None,
         for_update=False,
         for_share=False,
         offset=0,
@@ -703,7 +715,7 @@ class Model:
     @classmethod
     async def count(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         fields: typing.Sequence[Field] = tuple(),
         database: typing.Optional[Database] = None,
     ) -> int:
@@ -716,7 +728,7 @@ class Model:
     @classmethod
     async def update_many(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
         **data: str,
     ) -> int:
@@ -727,7 +739,7 @@ class Model:
     @classmethod
     async def delete_many(
         cls: typing.Type[MODEL_TV],
-        *conditions: Expression,
+        *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
     ) -> bool:
         return await Curd(model=cls, database=database).where(*conditions).delete()
@@ -772,11 +784,10 @@ class Model:
             data.append(ins.dump(fields=fields))
             data[-1][cls.schema.primary_field.name] = ins.primary
 
-        await UpdateByID(
+        await CaseUpdate(
             model=cls,
             database=database,
             data=data,
-            primary_key=cls.schema.primary_field.name,
         ).exec()
 
         for ins in instances:
@@ -805,6 +816,7 @@ class SQLMarker:
         def reset(self):
             self.value = 0
 
+    field: typing.Optional[Field] = None
     _var_index: ID = dataclasses.field(default_factory=ID)
     _vars: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
@@ -818,9 +830,22 @@ class SQLMarker:
         self._var_index = other._var_index
         return self
 
+    def _parse(self, value: typing.Any) -> str:
+        if isinstance(value, Field):
+            return value.name
+        elif isinstance(value, SQLMarker):
+            return value.sync(self).to_sql()
+        elif self.field:
+            return f":{self.mark(self.field.to_database(value))}"
+        else:
+            return f":{self.mark(value)}"
+
+    def to_sql(self) -> str:
+        pass
+
 
 @dataclasses.dataclass
-class Expression(SQLMarker):
+class SQLExpression(SQLMarker):
     class Operator(enum.Enum):
         ADD = "+"
         SUB = "-"
@@ -837,70 +862,91 @@ class Expression(SQLMarker):
         AND = "AND"
         OR = "OR"
 
-    field: Field = Field()
     values: typing.List[typing.Tuple[Operator, typing.Any]] = dataclasses.field(
         default_factory=list
     )
 
-    def __eq__(self, other: typing.Any) -> Expression:  # type: ignore[override]
+    def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         self.values.append((self.Operator.EQ, other))
         return self
 
-    def __gt__(self, other: object) -> Expression:
+    def __gt__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.GT, other))
         return self
 
-    def __lt__(self, other: object) -> Expression:
+    def __lt__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.LT, other))
         return self
 
-    def __ge__(self, other: object) -> Expression:
+    def __ge__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.GE, other))
         return self
 
-    def __le__(self, other: object) -> Expression:
+    def __le__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.LE, other))
         return self
 
-    def __ne__(self, other: object) -> Expression:  # type: ignore[override]
+    def __ne__(self, other: object) -> SQLExpression:  # type: ignore[override]
         self.values.append((self.Operator.NE, other))
         return self
 
-    def __add__(self, other: object) -> Expression:
+    def __add__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.ADD, other))
         return self
 
-    def __sub__(self, other: object) -> Expression:
+    def __sub__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.SUB, other))
         return self
 
-    def __mul__(self, other: object) -> Expression:
+    def __mul__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.MUL, other))
         return self
 
-    def __truediv__(self, other: object) -> Expression:
+    def __truediv__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.DIV, other))
         return self
 
-    def __and__(self, other: object) -> Expression:
+    def __and__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.AND, other))
         return self
 
-    def __or__(self, other: object) -> Expression:
+    def __or__(self, other: object) -> SQLExpression:
         self.values.append((self.Operator.OR, other))
         return self
 
     def to_sql(self):
+        assert self.field
+
         sql = f"`{self.field.name}`"
         for op, value in self.values:
-            if isinstance(value, Field):
-                sql += f" {op.value} `{value.name}`"
-            elif isinstance(value, Expression):
-                sql = f"({sql}) {op.value} ({value.sync(self).to_sql()})"
-            elif op == self.Operator.IN:
+            if op == self.Operator.IN:
                 sql += f" {op.value} ({', '.join(':' + self.mark(self.field.to_database(v)) for v in value)})"
+            elif isinstance(value, SQLExpression):
+                sql = f"({sql}) {op.value} ({value.sync(self).to_sql()})"
             else:
-                sql += f" {op.value} :{self.mark(self.field.to_database(value))}"
+                sql += f" {op.value} {self._parse(value)}"
+        return sql
+
+
+@dataclasses.dataclass
+class SQLCase(SQLMarker):
+    cases: typing.List[typing.Tuple[SQLExpression, typing.Any]] = dataclasses.field(
+        default_factory=list
+    )
+    default: typing.Any = None
+
+    def case(self: CASE_TV, expression: SQLExpression, value: typing.Any) -> CASE_TV:
+        self.cases.append((expression, value))
+        return self
+
+    def to_sql(self) -> str:
+        assert self.cases
+
+        sql = "CASE"
+        for ex, v in self.cases:
+            sql += f" WHEN {ex.sync(self).to_sql()} THEN {self._parse(v)}"
+        sql += f" ELSE {self._parse(self.default)} END"
+
         return sql
 
 
@@ -928,10 +974,10 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     model: typing.Optional[typing.Type[MODEL_TV]] = None
     fields: typing.Sequence[Field] = tuple()
     database: typing.Optional[Database] = None
-    _where: typing.Optional[Expression] = None
+    _where: typing.Optional[SQLExpression] = None
     _limit: int = 0
     _offset: int = 0
-    _order_by: typing.Optional[Field] = None
+    _order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None
     _order_by_asc: bool = False
     _for_update: bool = False
     _for_share: bool = False
@@ -977,7 +1023,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
     def where(
         self: CURD_TV,
-        *conditions: Expression,
+        *conditions: SQLExpression,
         is_and=True,
     ) -> CURD_TV:
         if conditions:
@@ -998,7 +1044,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         self._offset = int(n)
         return self
 
-    def order_by(self, f: Field, asc=True) -> Curd:
+    def order_by(self, f: typing.Union[Field, SQLExpression], asc=True) -> Curd:
         self._order_by = f
         self._order_by_asc = asc
         return self
@@ -1021,7 +1067,10 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             sql += f" WHERE {self._where.sync(self).to_sql()}"
         if not count:
             if self._order_by:
-                sql += f" ORDER BY `{self._order_by.name}` {'ASC' if self._order_by_asc else 'DESC'}"
+                if isinstance(self._order_by, Field):
+                    sql += f" ORDER BY `{self._order_by.name}` {'ASC' if self._order_by_asc else 'DESC'}"
+                elif isinstance(self._order_by, SQLExpression):
+                    sql += f" ORDER BY {self._order_by.sync(self).to_sql()} {'ASC' if self._order_by_asc else 'DESC'}"
             if self._limit:
                 sql += f" LIMIT {self._limit}"
             if self._offset:
@@ -1045,7 +1094,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         fields = {f.model_name: f for f in self.model.schema.fields}
         _sqls = []
         for k, v in data.items():
-            if isinstance(v, Expression):
+            if isinstance(v, SQLMarker):
                 _sqls.append(f"`{k}` = {v.sync(self).to_sql()}")
             else:
                 _sqls.append(f"`{k}` = :{self.mark(fields[k].to_database(v))}")
@@ -1081,29 +1130,35 @@ class Insert(BaseSQLBuilder):
 
 
 @dataclasses.dataclass
-class UpdateByID(BaseSQLBuilder):
+class CaseUpdate(BaseSQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
     data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
-    primary_key: str = ""
 
     async def exec(self) -> int:
         database = self.get_database()
-        sql = self.to_sql()
-        values = [self._vars]
-        for d in self.data[1:]:
-            self._vars = {}
-            self._var_index.reset()
-            for k, v in sorted(d.items(), key=lambda x: x[0]):
-                if k != self.primary_key:
-                    self.mark(v)
-            self.mark(d[self.primary_key])
-            values.append(self._vars)
-        async with database.transaction():
-            await database.execute_many(sql, values)
+        await database.execute(self.to_sql(), self._vars)
         return 1
 
     def to_sql(self):
         assert self.data
-        assert self.primary_key
         assert self.model
-        return f"UPDATE `{self.model.table_name}` SET {', '.join([f'`{k}` = :{self.mark(v)}' for k, v in sorted(self.data[0].items(), key=lambda x: x[0]) if k != self.primary_key])} WHERE {self.primary_key}=:{self.mark(self.data[0][self.primary_key])};"
+
+        parse_data = defaultdict(dict)
+        primary_values = []
+        for d in self.data:
+            for k, v in d.items():
+                if k == self.model.schema.primary_field.name:
+                    primary_values.append(v)
+                else:
+                    parse_data[k][d[self.model.schema.primary_field.name]] = v
+        sql = f"UPDATE `{self.model.table_name}` SET"
+        _sqls = []
+        for k, vs in parse_data.items():
+            case = SQLCase()
+            for pv, v in vs.items():
+                case.case(self.model.schema.primary_field == pv, v)
+            _sqls.append(f" `{k}` = {case.sync(self).to_sql()}")
+        sql += ", ".join(_sqls)
+        sql += f" WHERE {(self.model.schema.primary_field.contains(primary_values)).sync(self).to_sql()};"
+
+        return sql
