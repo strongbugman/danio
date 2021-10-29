@@ -185,6 +185,16 @@ async def test_sql():
         for u in await User.where(database=db).fetch_all():
             u.name += "_updated"
             u.save(fields=[User.name], database=db)
+    # exclusive lock
+    async with db.transaction():
+        for u in await User.where(database=db).for_update().fetch_all():
+            u.name += "_updated"
+            u.save(fields=[User.name], database=db)
+    # share lock
+    async with db.transaction():
+        for u in await User.where(database=db).for_share().fetch_all():
+            u.name += "_updated"
+            u.save(fields=[User.name], database=db)
 
 
 @pytest.mark.asyncio
