@@ -9,7 +9,7 @@ import typing
 
 import pytest
 
-from danio import Database, ValidateException, manage, model
+from danio import Database, ValidateException, SchemaException, manage, model
 
 
 db = Database(
@@ -104,6 +104,7 @@ async def test_sql():
     assert u.updated_at >= u.created_at
     assert u.id > 0
     assert u.gender is u.Gender.MALE
+    assert u.table_name == User.table_name
     # read
     assert await User.get(User.id == u.id)
     assert await User.where(User.id == u.id).fetch_one()
@@ -129,6 +130,7 @@ async def test_sql():
     # count
     assert (await User.count()) == 11
     assert await User.where().fetch_count() == 11
+    assert await User.where(User.id == -1).fetch_count() == 0
     # save with special fields only
     u = await User.get()
     u.name = "tester"
@@ -137,6 +139,11 @@ async def test_sql():
     nu = await User.get(User.id == u.id)
     assert nu.name == "tester"
     assert nu.gender == User.Gender.MALE
+    # save with wrong field
+    u = await User.get()
+    u.gender = 10
+    with pytest.raises(ValidateException):
+        await u.save()
     # update
     u = await User.get()
     u.name = "admin_user"
@@ -223,8 +230,19 @@ async def test_complicated_update():
     # combine
     await User.where(User.id == u.id).update(age=User.age - 1 + 10)
     assert (await User.get(User.id == u.id)).age == 9
+    assert await User.where((User.id + 1) > u.id).fetch_one()
+    assert await User.where((User.id + 0) >= u.id).fetch_one()
+    assert await User.where((User.id - 1) < u.id).fetch_one()
+    assert await User.where((User.id - 0) <= u.id).fetch_one()
+    assert await User.where((User.id - 1) != u.id).fetch_one()
     # multi express
     await User.where(User.id == u.id).update(age=User.age + 1 + (User.age / 9))
+    assert (await User.get(User.id == u.id)).age == 11
+    await User.where(User.id == u.id).update(age=User.age + 1 - (User.age / 11))
+    assert (await User.get(User.id == u.id)).age == 11
+    await User.where(User.id == u.id).update(age=(User.age + 1) * (User.age / 11))
+    assert (await User.get(User.id == u.id)).age == 12
+    await User.where(User.id == u.id).update(age=(User.age + 1) / (User.age / 12) - 2)
     assert (await User.get(User.id == u.id)).age == 11
     # case
     await User.where(User.id == u.id).update(
@@ -233,7 +251,7 @@ async def test_complicated_update():
     assert (await User.get(User.id == u.id)).age == 1
     # case default
     await User.where(User.id == u.id).update(
-        age=User.age.case(User.age > 10, 1, default=18).case(User.age < 1, 10)
+        age=User.age.case(User.age > 10, 1, default=18).case(User.age <= 0, 10)
     )
     assert (await User.get(User.id == u.id)).age == 18
 
@@ -371,8 +389,6 @@ async def test_schema():
     assert (
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
     )
-    # generate all
-    assert not await manage.make_migration(db, [UserProfile], "./tests/migrations")
     # abstract class
 
     @dataclasses.dataclass
@@ -405,7 +421,19 @@ async def test_schema():
     await db.execute(UserBackpack2.schema.to_sql())
     # from db
     assert UserBackpack2.schema == await model.Schema.from_db(db, UserBackpack2)
-    await model.Schema.from_db(db, UserProfile)
+    assert await model.Schema.from_db(db, UserProfile)
+    assert not await model.Schema.from_db(db, UserBackpack)
+    # wrong index
+
+    @dataclasses.dataclass
+    class UserBackpack3(BaseUserBackpack):
+        user_id: int = model.field(field_cls=model.IntField, name="user_id2")
+        weight: int = model.field(field_cls=model.IntField)
+
+        _table_index_keys = (("wrong_id"),)
+
+    with pytest.raises(SchemaException):
+        model.Schema.from_model(UserBackpack3)
 
 
 @pytest.mark.asyncio
@@ -429,8 +457,9 @@ async def test_migrate():
     await db.execute(
         "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
         "ALTER TABLE userprofile DROP COLUMN level;"
-        "ALTER TABLE userprofile MODIFY user_id int(10);"
+        "ALTER TABLE userprofile MODIFY user_id bigint(10);"
         "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
+        "CREATE  INDEX `user_id_6969_idx`  on userprofile (`user_id`);"
     )
     # make migration
     old_schema = await model.Schema.from_db(db, UserProfile)
@@ -441,12 +470,29 @@ async def test_migrate():
     assert migration.drop_fields[0].name == "group_id"
     assert len(migration.add_indexes) == 1
     assert migration.add_indexes[0].fields[0].name == "level"
-    assert len(migration.drop_indexes) == 1
-    assert migration.drop_indexes[0].fields[0].name == "group_id"
+    assert len(migration.drop_indexes) == 2
+    assert migration.drop_indexes[0].fields[0].name in ("group_id", "user_id")
+    assert migration.drop_indexes[1].fields[0].name in ("group_id", "user_id")
     # migrate
     await db.execute(migration.to_sql())
     assert UserProfile.schema == await model.Schema.from_db(db, UserProfile)
     # down migrate
     await db.execute((~migration).to_sql())
     assert old_schema == await model.Schema.from_db(db, UserProfile)
+    # drop table
     await db.execute((~(UserProfile.schema - None)).to_sql())
+
+
+@pytest.mark.asyncio
+async def test_manage():
+    @dataclasses.dataclass
+    class UserProfile(User):
+        user_id: int = model.field(field_cls=model.IntField)
+        level: int = model.field(field_cls=model.IntField, default=1)
+        coins: int = model.field(field_cls=model.IntField)
+
+    # generate all
+    assert not await manage.make_migration(db, [User], "./tests/migrations")
+    assert await manage.make_migration(db, [UserProfile], "./tests/migrations")
+    # get models
+    assert manage.get_models(["tests"])

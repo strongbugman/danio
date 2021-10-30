@@ -16,12 +16,9 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import reduce
 
-from .exception import OperationException, SchemaException, ValidateException
+from .database import Database
+from .exception import SchemaException, ValidateException
 from .utils import class_property
-
-if typing.TYPE_CHECKING:
-    from .database import Database
-
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
@@ -57,10 +54,6 @@ class Field:
             tmp = self.COMMENT_PATTERN.findall(self.describe)
             if tmp:
                 self.comment = tmp[0]
-            if not self.name:
-                tmp = self.NAME_PATTERN.findall(self.describe)
-                if tmp:
-                    self.name = tmp[0]
         # from model field
         if not self.describe and not self.type and self.TYPE:
             self.type = self.TYPE
@@ -117,9 +110,7 @@ class Field:
         )
 
     def to_sql(self) -> str:
-        if not self.describe:
-            raise ValueError("Need name type or describe")
-
+        assert self.describe
         return self.describe
 
     def to_python(self, value: typing.Any) -> typing.Any:
@@ -267,8 +258,7 @@ class Index:
         return hash((self.unique, tuple(f.name for f in self.fields)))
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Index):
-            raise NotImplementedError()
+        assert isinstance(other, Index)
         return self.__hash__() == other.__hash__()
 
     def to_sql(self) -> str:
@@ -304,16 +294,13 @@ class Schema:
         )
 
     def __eq__(self, other: object):
-        if not isinstance(other, Schema):
-            raise NotImplementedError()
+        assert isinstance(other, Schema)
         return self.__hash__() == other.__hash__()
 
     def __sub__(self, other: object) -> Migration:
         if other is None:
             return Migration(schema=self, old_schema=None)
-
-        elif not isinstance(other, Schema):
-            raise NotImplementedError()
+        assert isinstance(other, Schema)
         # fields
         add_fields = set(self.fields) - set(other.fields)
         _add_fields = {f.name: f for f in add_fields}
@@ -340,8 +327,7 @@ class Schema:
         )
 
     def to_sql(self) -> str:
-        if not self.primary_field:
-            raise SchemaException("No primary field!")
+        assert self.primary_field
 
         keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
         keys.extend([index.to_sql() for index in self.indexes])
@@ -426,8 +412,7 @@ class Schema:
         except Exception as e:
             if "doesn't exist" in str(e):
                 return None
-            else:
-                raise e
+            raise e
 
         return schema
 
@@ -598,8 +583,6 @@ class Model:
         else:
             if self.primary and force_insert:
                 data[self.schema.primary_field.name] = self.primary
-            elif not self.primary and force_insert:
-                raise ValueError("Force insert with zero id")
             setattr(
                 self,
                 self.schema.primary_field.model_name,
@@ -779,8 +762,7 @@ class Model:
 
         data = []
         for ins in instances:
-            if not ins.primary:
-                raise OperationException("Need primary")
+            assert ins.primary, "Need primary"
             data.append(ins.dump(fields=fields))
             data[-1][cls.schema.primary_field.name] = ins.primary
 
@@ -802,19 +784,10 @@ class SQLMarker:
         def __init__(self, value: int = 0) -> None:
             self.value: int = value
 
-        def __str__(self) -> str:
-            return str(self.value)
-
         def get_add(self) -> int:
             v = self.value
             self.value += 1
             return v
-
-        def get(self) -> int:
-            return self.value
-
-        def reset(self):
-            self.value = 0
 
     field: typing.Optional[Field] = None
     _var_index: ID = dataclasses.field(default_factory=ID)
@@ -841,7 +814,7 @@ class SQLMarker:
             return f":{self.mark(value)}"
 
     def to_sql(self) -> str:
-        pass
+        """For _parse method"""
 
 
 @dataclasses.dataclass
@@ -920,9 +893,9 @@ class SQLExpression(SQLMarker):
         sql = f"`{self.field.name}`"
         for op, value in self.values:
             if op == self.Operator.IN:
-                sql += f" {op.value} ({', '.join(':' + self.mark(self.field.to_database(v)) for v in value)})"
+                sql += f" {op.value} ({', '.join(self._parse(v) for v in value)})"
             elif isinstance(value, SQLExpression):
-                sql = f"({sql}) {op.value} ({value.sync(self).to_sql()})"
+                sql = f"({sql}) {op.value} ({self._parse(value)})"
             else:
                 sql += f" {op.value} {self._parse(value)}"
         return sql
@@ -944,7 +917,7 @@ class SQLCase(SQLMarker):
 
         sql = "CASE"
         for ex, v in self.cases:
-            sql += f" WHEN {ex.sync(self).to_sql()} THEN {self._parse(v)}"
+            sql += f" WHEN {self._parse(ex)} THEN {self._parse(v)}"
         sql += f" ELSE {self._parse(self.default)} END"
 
         return sql
@@ -1004,10 +977,8 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         data = await self.get_database(Model.Operation.READ).fetch_one(
             self.to_select_sql(count=True), self._vars
         )
-        if data:
-            return data[0]
-        else:
-            return 0
+        assert data
+        return data[0]
 
     async def delete(self) -> bool:
         return bool(
@@ -1035,13 +1006,11 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         return self
 
     def limit(self, n: int) -> Curd:
-        self._limit = int(n)
+        self._limit = n
         return self
 
     def offset(self, n: int) -> Curd:
-        if not self._limit:
-            raise OperationException("Empty limit")
-        self._offset = int(n)
+        self._offset = n
         return self
 
     def order_by(self, f: typing.Union[Field, SQLExpression], asc=True) -> Curd:
@@ -1074,10 +1043,11 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             if self._limit:
                 sql += f" LIMIT {self._limit}"
             if self._offset:
+                assert self._limit, "Offset need limit"
                 sql += f" OFFSET {self._offset}"
             if self._for_update:
                 sql += " FOR UPDATE"
-            if self._for_share:
+            elif self._for_share:
                 sql += " LOCK IN SHARE MODE"
 
         return sql + ";"

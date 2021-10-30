@@ -13,8 +13,6 @@ class _class_property:
     def __get__(
         self, obj: typing.Any, type: typing.Optional[typing.Type] = None
     ) -> typing.Any:
-        if type is None:
-            type = obj.__class__
         return self.fget.__get__(obj, type)()  # type: ignore
 
 
