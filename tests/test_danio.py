@@ -108,6 +108,7 @@ async def test_sql():
     # read
     assert await User.get(User.id == u.id)
     assert await User.where(User.id == u.id).fetch_one()
+    assert await User.where(row=f"id = {u.id}").fetch_one()
     # read with limit
     assert await User.select(User.id == u.id, limit=1)
     assert await User.where(User.id == u.id).limit(1).fetch_all()
@@ -272,7 +273,7 @@ async def test_field():
         fdatetime: datetime.datetime = model.field(field_cls=model.DateTimeField)
         fjson1: typing.List[int] = model.field(field_cls=model.JsonField, default=[])
         fjson2: typing.Dict[str, int] = model.field(
-            field_cls=model.JsonField, default={}
+            field_cls=model.JsonField, default=dict
         )
 
         @classmethod

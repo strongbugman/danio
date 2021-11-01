@@ -229,10 +229,10 @@ def field(
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any:
     extras = {}
-    if default is not Field.FieldDefault:
+    if (
+        default is not Field.FieldDefault
+    ):  # default to field default, allow None defalut
         extras["default"] = default
-    if "default" in extras:
-        extras["default"] = copy.copy(extras["default"])
 
     return field_cls(
         name=name,
@@ -507,7 +507,11 @@ class Model:
         for f in self.schema.fields:
             value = getattr(self, f.model_name)
             if isinstance(value, Field):
-                setattr(self, f.model_name, f.default)
+                if callable(value.default):
+                    default = value.default()
+                else:
+                    default = copy.copy(value.default)
+                setattr(self, f.model_name, default)
 
     @class_property
     @classmethod
@@ -545,7 +549,7 @@ class Model:
             if not f.enum:
                 continue
             value = getattr(self, f.model_name)
-            if value not in set((c for c in f.enum)):
+            if value not in set((c.value for c in f.enum)):
                 raise ValidateException(
                     f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
                 )
@@ -634,10 +638,11 @@ class Model:
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
+        row="",
         is_and=True,
     ) -> Curd[MODEL_TV]:
         return Curd(model=cls, fields=fields, database=database).where(
-            *conditions, is_and=is_and
+            *conditions, is_and=is_and, row=row
         )
 
     @classmethod
@@ -948,6 +953,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     fields: typing.Sequence[Field] = tuple()
     database: typing.Optional[Database] = None
     _where: typing.Optional[SQLExpression] = None
+    _row_where: str = ""
     _limit: int = 0
     _offset: int = 0
     _order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None
@@ -995,6 +1001,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     def where(
         self: CURD_TV,
         *conditions: SQLExpression,
+        row="",
         is_and=True,
     ) -> CURD_TV:
         if conditions:
@@ -1003,6 +1010,9 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 self._where = self._where & _where
             else:
                 self._where = _where
+        elif row:
+            self._row_where = row
+
         return self
 
     def limit(self, n: int) -> Curd:
@@ -1034,6 +1044,8 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             sql = f"SELECT COUNT(*) FROM {self.model.table_name}"
         if self._where:
             sql += f" WHERE {self._where.sync(self).to_sql()}"
+        elif self._row_where:
+            sql += f" WHERE {self._row_where}"
         if not count:
             if self._order_by:
                 if isinstance(self._order_by, Field):
