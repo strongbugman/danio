@@ -59,9 +59,9 @@ class Field:
             self.type = self.TYPE
         if not self.describe and self.name and self.type:
             self.describe = f"`{self.name}` {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
-        # model spec
+
         if self.enum and not isinstance(self.default, self.enum):
-            self.default = tuple(self.enum)[0]
+            self.default = self.enum(0)
 
     def __hash__(self):
         return hash((self.name, self.type))
@@ -463,7 +463,7 @@ class Migration:
             for f in self.add_fields:
                 sqls.append(f"ALTER TABLE {self.schema.name} ADD COLUMN {f.to_sql()}")
             for f in self.drop_fields:
-                sqls.append(f"ALTER TABLE {self.schema.name} DROP COLUMN {f.name}")
+                sqls.append(f"ALTER TABLE {self.schema.name} DROP COLUMN `{f.name}`")
             for f in self.change_type_fields:
                 sqls.append(f"ALTER TABLE {self.schema.name} MODIFY {f.name} {f.type}")
             for i in self.add_indexes:
@@ -528,9 +528,7 @@ class Model:
     @property
     def primary(self) -> int:
         assert self.schema.primary_field
-        return self.schema.primary_field.to_database(
-            getattr(self, self.schema.primary_field.model_name)
-        )
+        return getattr(self, self.schema.primary_field.model_name)
 
     def dump(self, fields: typing.Iterable[Field] = ()) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
@@ -549,6 +547,8 @@ class Model:
             if not f.enum:
                 continue
             value = getattr(self, f.model_name)
+            if isinstance(value, enum.Enum):
+                value = value.value
             if value not in set((c.value for c in f.enum)):
                 raise ValidateException(
                     f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"

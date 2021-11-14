@@ -31,10 +31,10 @@ db_name = "test_danio"
 
 @dataclasses.dataclass
 class User(model.Model):
-    class Gender(enum.IntEnum):
-        MALE = 1
-        FEMALE = 2
-        OTHER = 3
+    class Gender(enum.Enum):
+        MALE = 0
+        FEMALE = 1
+        OTHER = 2
 
     name: str = model.field(field_cls=model.CharField, comment="User name")
     age: int = model.field(field_cls=model.IntField)
