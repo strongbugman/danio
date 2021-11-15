@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "danio"
-version = "0.4.1"
+version = "0.4.2"
 description = "Lightly ORM"
 authors = ["strongbugman <strongbugman@gmail.com>"]
 
