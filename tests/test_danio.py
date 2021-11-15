@@ -264,6 +264,8 @@ async def test_field():
         fsint: int = model.field(field_cls=model.SmallIntField)
         fint: int = model.field(field_cls=model.IntField)
         fbint: int = model.field(field_cls=model.BigIntField)
+        ftint: int = model.field(field_cls=model.TinyIntField)
+        fbool: int = model.field(field_cls=model.BoolField)
         ffloat: int = model.field(field_cls=model.FLoatField)
         fdecimal: decimal.Decimal = model.field(field_cls=model.DecimalField)
         fchar: str = model.field(field_cls=model.CharField)
@@ -286,6 +288,8 @@ async def test_field():
     assert t.fsint == 0
     assert t.fbint == 0
     assert t.fint == 0
+    assert t.ftint == 0
+    assert t.fbool == False
     assert t.ffloat == 0
     assert t.fchar == ""
     assert t.ftext == ""
@@ -298,6 +302,8 @@ async def test_field():
     # read
     t = await Table.get()
     assert t.fint == 0
+    assert t.ftint == 0
+    assert t.fbool == False
     assert t.ffloat == 0
     assert t.fdecimal == decimal.Decimal()
     assert t.fchar == ""
@@ -309,6 +315,10 @@ async def test_field():
     assert t.fjson2 == {}
     # update
     t.fint = 1
+    t.fsint = 1
+    t.fbint = 1
+    t.ftint = 1
+    t.fbool = True
     t.ffloat = 2.123456
     t.fdecimal = decimal.Decimal("2.123456")
     t.fchar = "hello"
@@ -322,6 +332,10 @@ async def test_field():
     # read
     t = await Table.get()
     assert t.fint == 1
+    assert t.fsint == 1
+    assert t.fbint == 1
+    assert t.ftint == 1
+    assert t.fbool == True
     assert t.ffloat == 2.12346
     assert t.fdecimal == decimal.Decimal("2.12")
     assert t.fchar == "hello"

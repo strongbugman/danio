@@ -139,6 +139,28 @@ class SmallIntField(IntField):
 
 
 @dataclasses.dataclass(eq=False)
+class TinyIntField(IntField):
+    TYPE: typing.ClassVar[str] = "tinyint(3)"
+
+
+@dataclasses.dataclass(eq=False)
+class BoolField(Field):
+    TYPE: typing.ClassVar[str] = "tinyint(3)"
+
+    default: bool = False
+
+    def to_database(self, value: typing.Any) -> typing.Any:
+        if isinstance(value, bool):
+            value = int(value)
+        return super().to_database(value)
+    
+    def to_python(self, value: typing.Any) -> typing.Any:
+        if isinstance(value, int):
+            value = bool(value)
+        return super().to_python(value)
+
+
+@dataclasses.dataclass(eq=False)
 class BigIntField(IntField):
     TYPE: typing.ClassVar[str] = "bigint(20)"
 
