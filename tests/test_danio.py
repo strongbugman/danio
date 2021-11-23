@@ -289,7 +289,7 @@ async def test_field():
     assert t.fbint == 0
     assert t.fint == 0
     assert t.ftint == 0
-    assert t.fbool == False
+    assert not t.fbool
     assert t.ffloat == 0
     assert t.fchar == ""
     assert t.ftext == ""
@@ -303,7 +303,7 @@ async def test_field():
     t = await Table.get()
     assert t.fint == 0
     assert t.ftint == 0
-    assert t.fbool == False
+    assert not t.fbool
     assert t.ffloat == 0
     assert t.fdecimal == decimal.Decimal()
     assert t.fchar == ""
@@ -335,7 +335,7 @@ async def test_field():
     assert t.fsint == 1
     assert t.fbint == 1
     assert t.ftint == 1
-    assert t.fbool == True
+    assert t.fbool
     assert t.ffloat == 2.12346
     assert t.fdecimal == decimal.Decimal("2.12")
     assert t.fchar == "hello"

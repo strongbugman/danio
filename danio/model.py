@@ -140,12 +140,12 @@ class SmallIntField(IntField):
 
 @dataclasses.dataclass(eq=False)
 class TinyIntField(IntField):
-    TYPE: typing.ClassVar[str] = "tinyint(3)"
+    TYPE: typing.ClassVar[str] = "tinyint(1)"
 
 
 @dataclasses.dataclass(eq=False)
 class BoolField(Field):
-    TYPE: typing.ClassVar[str] = "tinyint(3)"
+    TYPE: typing.ClassVar[str] = "tinyint(1)"
 
     default: bool = False
 
@@ -153,7 +153,7 @@ class BoolField(Field):
         if isinstance(value, bool):
             value = int(value)
         return super().to_database(value)
-    
+
     def to_python(self, value: typing.Any) -> typing.Any:
         if isinstance(value, int):
             value = bool(value)
@@ -476,25 +476,27 @@ class Migration:
         if self.schema and not self.old_schema:
             sqls.append(self.schema.to_sql())
         elif self.old_schema and not self.schema:
-            sqls.append(f"DROP TABLE {self.old_schema.name}")
+            sqls.append(f"DROP TABLE `{self.old_schema.name}`")
         elif self.schema and self.old_schema:
             if self.old_schema.name != self.schema.name:
                 sqls.append(
-                    f"ALTER TABLE {self.old_schema.name} RENAME {self.schema.name}"
+                    f"ALTER TABLE `{self.old_schema.name}` RENAME `{self.schema.name}`"
                 )
             for f in self.add_fields:
-                sqls.append(f"ALTER TABLE {self.schema.name} ADD COLUMN {f.to_sql()}")
+                sqls.append(f"ALTER TABLE `{self.schema.name}` ADD COLUMN {f.to_sql()}")
             for f in self.drop_fields:
-                sqls.append(f"ALTER TABLE {self.schema.name} DROP COLUMN `{f.name}`")
+                sqls.append(f"ALTER TABLE `{self.schema.name}` DROP COLUMN `{f.name}`")
             for f in self.change_type_fields:
-                sqls.append(f"ALTER TABLE {self.schema.name} MODIFY {f.name} {f.type}")
+                sqls.append(
+                    f"ALTER TABLE `{self.schema.name}` MODIFY `{f.name}` {f.type}"
+                )
             for i in self.add_indexes:
                 sqls.append(
-                    f"CREATE {'UNIQUE' if i.unique else ''} INDEX {i.name} on {self.schema.name} ({','.join('`' + f.name + '`' for f in i.fields)})"
+                    f"CREATE {'UNIQUE' if i.unique else ''} INDEX {i.name} on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
                 )
             for i in self.drop_indexes:
                 if not set(i.fields) & set(self.drop_fields):
-                    sqls.append(f"ALTER TABLE {self.schema.name} DROP INDEX {i.name}")
+                    sqls.append(f"ALTER TABLE `{self.schema.name}` DROP INDEX {i.name}")
         if sqls:
             sqls[-1] += ";"
 
@@ -1063,7 +1065,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         if not count:
             sql = f"SELECT {', '.join(f'`{f.name}`' for f in self.fields or self.model.schema.fields)} FROM `{self.model.table_name}`"
         else:
-            sql = f"SELECT COUNT(*) FROM {self.model.table_name}"
+            sql = f"SELECT COUNT(*) FROM `{self.model.table_name}`"
         if self._where:
             sql += f" WHERE {self._where.sync(self).to_sql()}"
         elif self._row_where:
