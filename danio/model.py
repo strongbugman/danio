@@ -492,7 +492,7 @@ class Migration:
                 )
             for i in self.add_indexes:
                 sqls.append(
-                    f"CREATE {'UNIQUE' if i.unique else ''} INDEX {i.name} on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
+                    f"CREATE {'UNIQUE ' if i.unique else ''}INDEX {i.name} on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
                 )
             for i in self.drop_indexes:
                 if not set(i.fields) & set(self.drop_fields):
@@ -578,6 +578,12 @@ class Model:
                     f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
                 )
 
+    async def before_create(self):
+        pass
+
+    async def after_create(self):
+        pass
+
     async def before_save(self):
         self.validate()
 
@@ -609,6 +615,7 @@ class Model:
                 **data,
             )
         else:
+            await self.before_create()
             if self.primary and force_insert:
                 data[self.schema.primary_field.name] = self.primary
             setattr(
@@ -618,6 +625,7 @@ class Model:
                     model=self.__class__, database=database, data=[data]
                 ).exec(),
             )
+            await self.after_create()
         await self.after_save()
         return self
 
@@ -764,6 +772,8 @@ class Model:
     ) -> typing.Iterable[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
+            if not ins.primary:
+                await ins.before_create()
             await ins.before_save()
 
         data = [ins.dump() for ins in instances]
@@ -772,6 +782,7 @@ class Model:
         for ins in instances:
             if not ins.primary:
                 setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
+                await ins.after_create()
             next_ins_id = ins.primary + 1
 
         for ins in instances:

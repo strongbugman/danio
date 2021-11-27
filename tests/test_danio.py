@@ -29,6 +29,9 @@ read_db = Database(
 db_name = "test_danio"
 
 
+user_count = 0
+
+
 @dataclasses.dataclass
 class User(model.Model):
     class Gender(enum.Enum):
@@ -47,6 +50,11 @@ class User(model.Model):
         comment="when created",
     )
     gender: Gender = model.field(field_cls=model.IntField, enum=Gender)
+
+    async def before_create(self):
+        global user_count
+        user_count += 1
+        await super().before_create()
 
     async def before_save(self):
         self.updated_at = datetime.datetime.utcnow()
@@ -105,6 +113,7 @@ async def test_sql():
     assert u.id > 0
     assert u.gender is u.Gender.MALE
     assert u.table_name == User.table_name
+    assert user_count == 1
     # read
     assert await User.get(User.id == u.id)
     assert await User.where(User.id == u.id).fetch_one()
@@ -132,6 +141,7 @@ async def test_sql():
     assert (await User.count()) == 11
     assert await User.where().fetch_count() == 11
     assert await User.where(User.id == -1).fetch_count() == 0
+    assert user_count == 11
     # save with special fields only
     u = await User.get()
     u.name = "tester"
@@ -140,6 +150,7 @@ async def test_sql():
     nu = await User.get(User.id == u.id)
     assert nu.name == "tester"
     assert nu.gender == User.Gender.MALE
+    assert user_count == 11
     # save with wrong field
     u = await User.get()
     u.gender = 10

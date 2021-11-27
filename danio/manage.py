@@ -23,9 +23,6 @@ async def make_migration(
     """Make migration sql, compare model schema and database schema"""
     sqls = []
     down_sqls = []
-    sqls.append(
-        f"CREATE DATABASE IF NOT EXISTS `{db.url.database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-    )
     sqls.append(f"USE `{db.url.database}`;")
     down_sqls.extend(sqls)
     for m in models:
@@ -34,7 +31,7 @@ async def make_migration(
         if migration_sql:
             sqls.append(migration_sql)
             down_sqls.append((~migration).to_sql())
-    if len(sqls) == 2:
+    if len(sqls) == 1:
         logging.info("No migration detected")
         return ""
     # write to file
