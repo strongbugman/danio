@@ -9,8 +9,7 @@ import typing
 
 import pytest
 
-from danio import Database, ValidateException, SchemaException, manage, model
-
+from danio import Database, SchemaException, ValidateException, manage, model
 
 db = Database(
     "mysql://root:app@localhost:3306/",
@@ -39,7 +38,11 @@ class User(model.Model):
         FEMALE = 1
         OTHER = 2
 
-    name: str = model.field(field_cls=model.CharField, comment="User name")
+    name: str = model.field(
+        field_cls=model.CharField,
+        comment="User name",
+        default=model.CharField.NoDefault,
+    )
     age: int = model.field(field_cls=model.IntField)
     created_at: datetime.datetime = model.field(
         field_cls=model.DateTimeField,
@@ -114,6 +117,8 @@ async def test_sql():
     assert u.gender is u.Gender.MALE
     assert u.table_name == User.table_name
     assert user_count == 1
+    with pytest.raises(ValidateException):
+        await User().save()
     # read
     assert await User.get(User.id == u.id)
     assert await User.where(User.id == u.id).fetch_one()
@@ -189,7 +194,7 @@ async def test_sql():
     )
     assert await User.select(User.name.like("test_%"))
     assert await User.select(User.gender.contains([g.value for g in User.Gender]))
-    assert not (await User.select(fields=[User.id]))[0].name
+    assert (await User.select(fields=[User.id]))[0].name == User.name
     # combine condition
     u = await User.get()
     u.age = 2

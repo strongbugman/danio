@@ -33,6 +33,9 @@ class Field:
     class FieldDefault:
         pass
 
+    class NoDefault:
+        pass
+
     COMMENT_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"COMMENT '(.*)'")
     NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"^`([^ ,]*)`")
     TYPE: typing.ClassVar[str] = ""
@@ -61,7 +64,7 @@ class Field:
             self.describe = f"`{self.name}` {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
 
         if self.enum and not isinstance(self.default, self.enum):
-            self.default = self.enum(0)
+            self.default = list(self.enum)[0]
 
     def __hash__(self):
         return hash((self.name, self.type))
@@ -566,17 +569,19 @@ class Model:
         return data
 
     def validate(self):
-        # choices
         for f in self.schema.fields:
-            if not f.enum:
-                continue
             value = getattr(self, f.model_name)
-            if isinstance(value, enum.Enum):
-                value = value.value
-            if value not in set((c.value for c in f.enum)):
-                raise ValidateException(
-                    f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
-                )
+            # choices
+            if f.enum:
+                if isinstance(value, enum.Enum):
+                    value = value.value
+                if value not in set((c.value for c in f.enum)):
+                    raise ValidateException(
+                        f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
+                    )
+            # no default
+            if isinstance(value, f.NoDefault):
+                raise ValidateException(f"{self.table_name}.{f.model_name} required!")
 
     async def before_create(self):
         pass
