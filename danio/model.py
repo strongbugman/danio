@@ -568,7 +568,7 @@ class Model:
 
         return data
 
-    def validate(self):
+    async def validate(self):
         for f in self.schema.fields:
             value = getattr(self, f.model_name)
             # choices
@@ -590,7 +590,7 @@ class Model:
         pass
 
     async def before_save(self):
-        self.validate()
+        await self.validate()
 
     async def after_save(self):
         pass

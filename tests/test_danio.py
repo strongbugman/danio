@@ -65,8 +65,8 @@ class User(model.Model):
             self.created_at = self.updated_at
         await super().before_save()
 
-    def validate(self):
-        super().validate()
+    async def validate(self):
+        await super().validate()
         if not self.name:
             raise ValidateException("Empty name!")
 
