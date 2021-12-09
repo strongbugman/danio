@@ -138,7 +138,7 @@ class IntField(Field):
 
 @dataclasses.dataclass(eq=False)
 class SmallIntField(IntField):
-    TYPE: typing.ClassVar[str] = "smallint(3)"
+    TYPE: typing.ClassVar[str] = "smallint"
 
 
 @dataclasses.dataclass(eq=False)
