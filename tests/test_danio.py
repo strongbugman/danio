@@ -84,6 +84,8 @@ class User(model.Model):
 async def database():
     await db.connect()
     await read_db.connect()
+    if not os.path.exists(os.path.join("tests", "migrations")):
+        os.mkdir(os.path.join("tests", "migrations"))
     try:
         await db.execute(
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
