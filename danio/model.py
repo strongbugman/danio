@@ -16,6 +16,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import reduce
 
+from pymysql import converters
+
 from .database import Database
 from .exception import SchemaException, ValidateException
 from .utils import class_property
@@ -37,17 +39,23 @@ class Field:
         pass
 
     COMMENT_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"COMMENT '(.*)'")
-    NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"^`([^ ,]*)`")
     TYPE: typing.ClassVar[str] = ""
 
     name: str = ""
     model_name: str = ""
-    default: typing.Any = None  # for model layer
+    default: typing.Any = NoDefault  # for model layer
     describe: str = ""
     type: str = ""
     auto_increment: bool = False
     comment: str = ""
     enum: typing.Optional[typing.Type[enum.Enum]] = None
+
+    @property
+    def default_value(self) -> typing.Any:
+        if callable(self.default):
+            return self.default()
+        else:
+            return copy.copy(self.default)
 
     def __post_init__(self):
         # from schema sql
@@ -67,7 +75,9 @@ class Field:
             self.default = list(self.enum)[0]
 
     def __hash__(self):
-        return hash((self.name, self.type))
+        return hash(
+            (self.name, self.type.split("(")[0] if "int" in self.type else self.type)
+        )
 
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
@@ -138,12 +148,12 @@ class IntField(Field):
 
 @dataclasses.dataclass(eq=False)
 class SmallIntField(IntField):
-    TYPE: typing.ClassVar[str] = "smallint"
+    TYPE: typing.ClassVar[str] = "smallint(6)"
 
 
 @dataclasses.dataclass(eq=False)
 class TinyIntField(IntField):
-    TYPE: typing.ClassVar[str] = "tinyint(1)"
+    TYPE: typing.ClassVar[str] = "tinyint(4)"
 
 
 @dataclasses.dataclass(eq=False)
@@ -365,7 +375,7 @@ class Schema:
 
     @classmethod
     def from_model(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
-        schema = cls(name=m.table_name)
+        schema = cls(name=m.table_name, model=m)
         schema.abstracted = m.__dict__.get("_table_abstracted", False)
         # fields
         for f in dataclasses.fields(m):
@@ -487,6 +497,13 @@ class Migration:
                 )
             for f in self.add_fields:
                 sqls.append(f"ALTER TABLE `{self.schema.name}` ADD COLUMN {f.to_sql()}")
+                if not isinstance(f.default_value, f.NoDefault):
+                    sqls[
+                        -1
+                    ] += f" DEFAULT {converters.escape_item(f.to_database(f.default_value), None)}"
+                    sqls.append(
+                        f"ALTER TABLE `{self.schema.name}` ALTER COLUMN `{f.name}` DROP DEFAULT"
+                    )
             for f in self.drop_fields:
                 sqls.append(f"ALTER TABLE `{self.schema.name}` DROP COLUMN `{f.name}`")
             for f in self.change_type_fields:
@@ -534,11 +551,7 @@ class Model:
         for f in self.schema.fields:
             value = getattr(self, f.model_name)
             if isinstance(value, Field):
-                if callable(value.default):
-                    default = value.default()
-                else:
-                    default = copy.copy(value.default)
-                setattr(self, f.model_name, default)
+                setattr(self, f.model_name, f.default_value)
 
     @class_property
     @classmethod
