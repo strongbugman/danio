@@ -16,10 +16,11 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import reduce
 
+import pymysql
 from pymysql import converters
 
 from .database import Database
-from .exception import SchemaException, ValidateException
+from .exception import SchemaException, UnkownException, ValidateException
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
@@ -109,7 +110,10 @@ class Field:
     def __truediv__(self, other: object) -> SQLExpression:
         return SQLExpression(field=self, values=[(SQLExpression.Operator.DIV, other)])
 
-    def contains(self, values: typing.Iterable) -> SQLExpression:
+    def contains(self, values: typing.Sequence) -> SQLExpression:
+        if not values:
+            raise ValueError("Empty values")
+
         return SQLExpression(field=self, values=[(SQLExpression.Operator.IN, values)])
 
     def case(
@@ -570,7 +574,7 @@ class Model:
         assert self.schema.primary_field
         return getattr(self, self.schema.primary_field.model_name)
 
-    def dump(self, fields: typing.Iterable[Field] = ()) -> typing.Dict[str, typing.Any]:
+    def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
         data = {}
         field_names = {f.name for f in fields}
@@ -614,36 +618,51 @@ class Model:
     async def after_delete(self):
         pass
 
+    async def create(
+        self: MODEL_TV,
+        database: typing.Optional[Database] = None,
+        fields: typing.Sequence[Field] = (),
+    ):
+        # TODO: on conflict ignore
+        data = self.dump(fields=fields)
+        await self.before_create()
+        setattr(
+            self,
+            self.schema.primary_field.model_name,
+            (
+                await Insert(
+                    model=self.__class__, database=database, insert_data=[data]
+                ).exec()
+            )[0],
+        )
+        await self.after_create()
+        return self
+
+    async def update(
+        self: MODEL_TV,
+        database: typing.Optional[Database] = None,
+        fields: typing.Sequence[Field] = (),
+    ):
+        assert self.primary
+        data = self.dump(fields=fields)
+        await self.__class__.update_many(
+            self.schema.primary_field == self.primary,
+            database=database,
+            **data,
+        )
+        return self
+
     async def save(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
-        fields: typing.Iterable[Field] = (),
+        fields: typing.Sequence[Field] = (),
         force_insert=False,
     ) -> MODEL_TV:
-        assert self.schema.primary_field
-
         await self.before_save()
-        data = self.dump(fields=fields)
-        if self.schema.primary_field.name in data:
-            data.pop(self.schema.primary_field.name)
         if self.primary and not force_insert:
-            await self.__class__.update_many(
-                self.schema.primary_field == self.primary,
-                database=database,
-                **data,
-            )
+            await self.update(database=database, fields=fields)
         else:
-            await self.before_create()
-            if self.primary and force_insert:
-                data[self.schema.primary_field.name] = self.primary
-            setattr(
-                self,
-                self.schema.primary_field.model_name,
-                await Insert(
-                    model=self.__class__, database=database, data=[data]
-                ).exec(),
-            )
-            await self.after_create()
+            await self.create(database=database, fields=fields)
         await self.after_save()
         return self
 
@@ -657,6 +676,35 @@ class Model:
         )
         await self.after_delete()
         return deleted
+
+    async def get_or_create(
+        self: MODEL_TV,
+        key_fields: typing.Sequence[Field],
+        database: typing.Optional[Database] = None,
+        fields: typing.Sequence[Field] = (),
+    ) -> typing.Tuple[MODEL_TV, bool]:
+        if not database:
+            # using write db by default
+            database = self.__class__.get_database(
+                self.Operation.CREATE, self.table_name
+            )
+        conditons = []
+        created = False
+        for f in key_fields:
+            conditons.append(f == getattr(self, f.model_name))
+        ins = await self.__class__.get(*conditons, database=database, fields=fields)
+        if not ins:
+            try:
+                ins = await self.create(database=database, fields=fields)
+                created = True
+            except pymysql.IntegrityError as e:
+                ins = await self.__class__.get(
+                    *conditons, database=database, fields=fields
+                )
+                if not ins:
+                    raise UnkownException() from e
+        assert ins
+        return ins, created
 
     @classmethod
     def get_table_name(cls) -> str:
@@ -768,7 +816,7 @@ class Model:
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
-        **data: str,
+        **data: typing.Any,
     ) -> int:
         return (
             await Curd(model=cls, database=database).where(*conditions).update(**data)
@@ -783,11 +831,28 @@ class Model:
         return await Curd(model=cls, database=database).where(*conditions).delete()
 
     @classmethod
+    async def upsert(
+        cls,
+        database: typing.Optional[Database] = None,
+        update_fields: typing.Sequence[str] = (),
+        **insert_data: typing.Any,
+    ) -> typing.Tuple[int, int]:
+        """
+        Using insert on duplicate: https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
+        """
+        return await Insert(
+            model=cls,
+            database=database,
+            insert_data=[insert_data],
+            update_fields=update_fields,
+        ).exec()
+
+    @classmethod
     async def bulk_create(
         cls: typing.Type[MODEL_TV],
-        instances: typing.Iterable[MODEL_TV],
+        instances: typing.Sequence[MODEL_TV],
         database: typing.Optional[Database] = None,
-    ) -> typing.Iterable[MODEL_TV]:
+    ) -> typing.Sequence[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
             if not ins.primary:
@@ -795,7 +860,9 @@ class Model:
             await ins.before_save()
 
         data = [ins.dump() for ins in instances]
-        next_ins_id = await Insert(model=cls, database=database, data=data).exec()
+        next_ins_id = (
+            await Insert(model=cls, database=database, insert_data=data).exec()
+        )[0]
 
         for ins in instances:
             if not ins.primary:
@@ -810,10 +877,10 @@ class Model:
     @classmethod
     async def bulk_update(
         cls: typing.Type[MODEL_TV],
-        instances: typing.Iterable[MODEL_TV],
-        fields: typing.Iterable[Field] = (),
+        instances: typing.Sequence[MODEL_TV],
+        fields: typing.Sequence[Field] = (),
         database: typing.Optional[Database] = None,
-    ) -> typing.Iterable[MODEL_TV]:
+    ) -> typing.Sequence[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
             await ins.before_save()
@@ -1142,26 +1209,35 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 @dataclasses.dataclass
 class Insert(BaseSQLBuilder):
     OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.CREATE
-    data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
+    insert_data: typing.Sequence[typing.Dict[str, str]] = dataclasses.field(
+        default_factory=list
+    )
+    update_fields: typing.Sequence[str] = dataclasses.field(default_factory=list)
 
-    async def exec(self) -> int:
+    async def exec(self) -> typing.Tuple[int, int]:
         return await self.get_database().execute(self.to_sql(), self._vars)
 
     def to_sql(self):
-        assert self.data
+        assert self.insert_data
 
-        keys = list(self.data[0].keys())
+        keys = list(self.insert_data[0].keys())
         vars = []
-        for d in self.data:
+        for d in self.insert_data:
             _vars = []
             for k in keys:
                 _vars.append(self.mark(d[k]))
             vars.append(_vars)
         sql = f"INSERT INTO `{self.model.table_name}` ({', '.join(map(lambda x: f'`{x}`', keys))}) VALUES"
-        value_sql = []
+        insert_value_sql = []
         for vs in vars:
-            value_sql.append(f"({', '.join(':' + v for v in vs)})")
-        return sql + ", ".join(value_sql) + ";"
+            insert_value_sql.append(f"({', '.join(':' + v for v in vs)})")
+        update_value_sql = []
+        for d in self.update_fields:
+            update_value_sql.append(f"{d} = VALUES({d})")
+        sql = sql + ", ".join(insert_value_sql)
+        if update_value_sql:
+            sql += " ON DUPLICATE KEY UPDATE " + ", ".join(update_value_sql)
+        return sql + ";"
 
 
 @dataclasses.dataclass

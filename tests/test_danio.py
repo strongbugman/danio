@@ -9,6 +9,7 @@ import typing
 
 import pytest
 
+import danio
 from danio import Database, SchemaException, ValidateException, manage, model
 
 db = Database(
@@ -273,6 +274,44 @@ async def test_complicated_update():
         age=User.age.case(User.age > 10, 1, default=18).case(User.age <= 0, 10)
     )
     assert (await User.get(User.id == u.id)).age == 18
+    # upsert
+
+    @dataclasses.dataclass
+    class UserProfile(danio.Model):
+        user_id: int = model.field(model.IntField)
+        level: int = model.field(model.IntField)
+
+        _table_unique_keys = ((user_id,),)
+
+        @classmethod
+        def get_database(
+            cls, operation: model.Model.Operation, table: str, *args, **kwargs
+        ) -> Database:
+            if operation == model.Model.Operation.READ:
+                return read_db
+            else:
+                return db
+
+    await db.execute(UserProfile.schema.to_sql())
+    # create or update
+    lastid, rowcount = await UserProfile.upsert(
+        update_fields=["level"], user_id=1, level=10
+    )
+    assert lastid
+    assert rowcount == 1
+    uid = lastid
+    # --
+    lastid, rowcount = await UserProfile.upsert(
+        update_fields=["level"], user_id=1, level=11
+    )
+    assert lastid == uid
+    assert rowcount == 2
+    # --
+    lastid, rowcount = await UserProfile.upsert(
+        update_fields=["level"], user_id=1, level=11
+    )
+    assert not lastid
+    assert not rowcount
 
 
 @pytest.mark.asyncio
@@ -397,6 +436,39 @@ async def test_bulk_operations():
     for user in await User.select():
         assert user.name.endswith(f"_updated_{user.id}")
         assert user.gender == User.gender.default
+
+
+@pytest.mark.asyncio
+async def test_combo_operations():
+    @dataclasses.dataclass
+    class UserProfile(danio.Model):
+        user_id: int = model.field(model.IntField)
+        level: int = model.field(model.IntField)
+
+        _table_unique_keys = ((user_id,),)
+
+        @classmethod
+        def get_database(
+            cls, operation: model.Model.Operation, table: str, *args, **kwargs
+        ) -> Database:
+            if operation == model.Model.Operation.READ:
+                return read_db
+            else:
+                return db
+
+    await db.execute(UserProfile.schema.to_sql())
+    up, created = await UserProfile(user_id=1, level=10).get_or_create(
+        key_fields=(UserProfile.user_id,)
+    )
+    assert up.id
+    assert created
+    # --
+    up, created = await UserProfile(user_id=1, level=11).get_or_create(
+        key_fields=(UserProfile.user_id,)
+    )
+    assert up.id
+    assert not created
+    assert up.level == 10
 
 
 @pytest.mark.asyncio
