@@ -55,16 +55,16 @@ class User(model.Model):
     )
     gender: Gender = model.field(field_cls=model.IntField, enum=Gender)
 
-    async def before_create(self):
+    async def before_create(self, **kwargs):
         global user_count
         user_count += 1
-        await super().before_create()
+        await super().before_create(**kwargs)
 
-    async def before_save(self):
+    async def before_save(self, **kwargs):
         self.updated_at = datetime.datetime.utcnow()
         if self.created_at.ctime() == "Thu Jan  1 00:00:00 1970":
             self.created_at = self.updated_at
-        await super().before_save()
+        await super().before_save(**kwargs)
 
     async def validate(self):
         await super().validate()
@@ -443,6 +443,9 @@ async def test_bulk_operations():
     for user in await User.select():
         assert user.name.endswith(f"_updated_{user.id}")
         assert user.gender == User.gender.default
+    # delete
+    await User.bulk_delete(users)
+    assert not await User.select()
 
 
 @pytest.mark.asyncio

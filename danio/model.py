@@ -600,14 +600,23 @@ class Model:
             if isinstance(value, f.NoDefault):
                 raise ValidateException(f"{self.table_name}.{f.model_name} required!")
 
-    async def before_create(self):
-        pass
+    async def before_create(self, validate: bool = True):
+        if validate:
+            await self.validate()
 
     async def after_create(self):
         pass
 
-    async def before_save(self):
-        await self.validate()
+    async def before_update(self, validate: bool = True):
+        if validate:
+            await self.validate()
+
+    async def after_update(self):
+        pass
+
+    async def before_save(self, validate: bool = True):
+        if validate:
+            await self.validate()
 
     async def after_save(self):
         pass
@@ -622,10 +631,10 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        validate: bool = True,
     ):
-        # TODO: on conflict ignore
         data = self.dump(fields=fields)
-        await self.before_create()
+        await self.before_create(validate=validate)
         setattr(
             self,
             self.schema.primary_field.model_name,
@@ -642,14 +651,17 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        validate: bool = True,
     ) -> bool:
         assert self.primary
+        await self.before_update(validate=validate)
         data = self.dump(fields=fields)
         rowcount = await self.__class__.update_many(
             self.schema.primary_field == self.primary,
             database=database,
             **data,
         )
+        await self.after_update()
         return rowcount > 0
 
     async def save(
@@ -657,12 +669,13 @@ class Model:
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
         force_insert=False,
+        validate: bool = True,
     ) -> MODEL_TV:
-        await self.before_save()
+        await self.before_save(validate=validate)
         if self.primary and not force_insert:
-            await self.update(database=database, fields=fields)
+            await self.update(database=database, fields=fields, validate=False)
         else:
-            await self.create(database=database, fields=fields)
+            await self.create(database=database, fields=fields, validate=False)
         await self.after_save()
         return self
 
@@ -682,6 +695,7 @@ class Model:
         key_fields: typing.Sequence[Field],
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool]:
         if not database:
             # using write db by default
@@ -695,7 +709,9 @@ class Model:
         ins = await self.__class__.get(*conditons, database=database, fields=fields)
         if not ins:
             try:
-                ins = await self.create(database=database, fields=fields)
+                ins = await self.create(
+                    database=database, fields=fields, validate=validate
+                )
                 created = True
             except pymysql.IntegrityError as e:
                 ins = await self.__class__.get(
@@ -711,6 +727,7 @@ class Model:
         key_fields: typing.Sequence[Field],
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool, bool]:
         if not database:
             database = self.__class__.get_database(
@@ -730,17 +747,20 @@ class Model:
             )
             if not ins:
                 try:
-                    ins = await self.create(database=database, fields=fields)
-                    created = True
+                    async with database.transaction():
+                        ins = await self.create(
+                            database=database, fields=fields, validate=validate
+                        )
+                        created = True
                 except pymysql.IntegrityError as e:
                     ins = await self.__class__.get(
-                        *conditons, database=database, fields=fields
+                        *conditons, database=database, fields=fields, for_update=True
                     )
                     if not ins:
                         raise e
             else:
                 setattr(self, self.schema.primary_field.model_name, ins.primary)
-                updated = await self.update()
+                updated = await self.update(validate=validate)
                 ins = self
         assert ins
         return ins, created, updated
@@ -892,12 +912,11 @@ class Model:
         cls: typing.Type[MODEL_TV],
         instances: typing.Sequence[MODEL_TV],
         database: typing.Optional[Database] = None,
+        validate: bool = True,
     ) -> typing.Sequence[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
-            if not ins.primary:
-                await ins.before_create()
-            await ins.before_save()
+            await ins.before_create(validate=validate)
 
         data = [ins.dump() for ins in instances]
         next_ins_id = (
@@ -907,11 +926,10 @@ class Model:
         for ins in instances:
             if not ins.primary:
                 setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
-                await ins.after_create()
             next_ins_id = ins.primary + 1
 
         for ins in instances:
-            await ins.after_save()
+            await ins.after_create()
         return instances
 
     @classmethod
@@ -920,10 +938,11 @@ class Model:
         instances: typing.Sequence[MODEL_TV],
         fields: typing.Sequence[Field] = (),
         database: typing.Optional[Database] = None,
+        validate: bool = True,
     ) -> typing.Sequence[MODEL_TV]:
         assert cls.schema.primary_field
         for ins in instances:
-            await ins.before_save()
+            await ins.before_update(validate=validate)
 
         data = []
         for ins in instances:
@@ -938,8 +957,24 @@ class Model:
         ).exec()
 
         for ins in instances:
-            await ins.after_save()
+            await ins.after_update()
         return instances
+
+    @classmethod
+    async def bulk_delete(
+        cls,
+        instances: typing.Sequence[MODEL_TV],
+        database: typing.Optional[Database] = None,
+    ) -> int:
+        for ins in instances:
+            await ins.before_delete()
+        row_count = await cls.delete_many(
+            cls.schema.primary_field.contains(tuple(ins.primary for ins in instances)),
+            database=database,
+        )
+        for ins in instances:
+            await ins.after_delete()
+        return row_count
 
 
 # query builder
