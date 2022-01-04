@@ -222,6 +222,51 @@ async def test_sql():
         for u in await User.where(database=db).for_share().fetch_all():
             u.name += "_updated"
             u.save(fields=[User.name], database=db)
+    # upsert
+
+    @dataclasses.dataclass
+    class UserProfile(danio.Model):
+        user_id: int = model.field(model.IntField)
+        level: int = model.field(model.IntField)
+
+        _table_unique_keys = ((user_id,),)
+
+        @classmethod
+        def get_database(
+            cls, operation: model.Model.Operation, table: str, *args, **kwargs
+        ) -> Database:
+            if operation == model.Model.Operation.READ:
+                return read_db
+            else:
+                return db
+
+    await db.execute(UserProfile.schema.to_sql())
+    created, updated = await UserProfile.upsert(
+        [
+            dict(user_id=1, level=10),
+        ],
+        update_fields=["level"],
+    )
+    assert created
+    assert not updated
+    # --
+    created, updated = await UserProfile.upsert(
+        [
+            dict(user_id=1, level=11),
+        ],
+        update_fields=["level"],
+    )
+    assert not created
+    assert updated
+    # --
+    created, updated = await UserProfile.upsert(
+        [
+            dict(user_id=1, level=11),
+        ],
+        update_fields=["level"],
+    )
+    assert not created
+    assert not updated
 
 
 @pytest.mark.asyncio
@@ -274,44 +319,6 @@ async def test_complicated_update():
         age=User.age.case(User.age > 10, 1, default=18).case(User.age <= 0, 10)
     )
     assert (await User.get(User.id == u.id)).age == 18
-    # upsert
-
-    @dataclasses.dataclass
-    class UserProfile(danio.Model):
-        user_id: int = model.field(model.IntField)
-        level: int = model.field(model.IntField)
-
-        _table_unique_keys = ((user_id,),)
-
-        @classmethod
-        def get_database(
-            cls, operation: model.Model.Operation, table: str, *args, **kwargs
-        ) -> Database:
-            if operation == model.Model.Operation.READ:
-                return read_db
-            else:
-                return db
-
-    await db.execute(UserProfile.schema.to_sql())
-    # create or update
-    lastid, rowcount = await UserProfile.upsert(
-        update_fields=["level"], user_id=1, level=10
-    )
-    assert lastid
-    assert rowcount == 1
-    uid = lastid
-    # --
-    lastid, rowcount = await UserProfile.upsert(
-        update_fields=["level"], user_id=1, level=11
-    )
-    assert lastid == uid
-    assert rowcount == 2
-    # --
-    lastid, rowcount = await UserProfile.upsert(
-        update_fields=["level"], user_id=1, level=11
-    )
-    assert not lastid
-    assert not rowcount
 
 
 @pytest.mark.asyncio
@@ -457,6 +464,7 @@ async def test_combo_operations():
                 return db
 
     await db.execute(UserProfile.schema.to_sql())
+    # get or create
     up, created = await UserProfile(user_id=1, level=10).get_or_create(
         key_fields=(UserProfile.user_id,)
     )
@@ -469,6 +477,27 @@ async def test_combo_operations():
     assert up.id
     assert not created
     assert up.level == 10
+    # create or udpate
+    up, created, updated = await UserProfile(user_id=2, level=10).create_or_update(
+        key_fields=(UserProfile.user_id,)
+    )
+    assert up.id
+    assert created
+    assert not updated
+    # --
+    up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
+        key_fields=(UserProfile.user_id,)
+    )
+    assert up.id
+    assert not created
+    assert updated
+    # --
+    up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
+        key_fields=(UserProfile.user_id,)
+    )
+    assert up.id
+    assert not created
+    assert not updated
 
 
 @pytest.mark.asyncio

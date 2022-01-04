@@ -20,7 +20,7 @@ import pymysql
 from pymysql import converters
 
 from .database import Database
-from .exception import SchemaException, UnkownException, ValidateException
+from .exception import SchemaException, ValidateException
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
@@ -642,15 +642,15 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
-    ):
+    ) -> bool:
         assert self.primary
         data = self.dump(fields=fields)
-        await self.__class__.update_many(
+        rowcount = await self.__class__.update_many(
             self.schema.primary_field == self.primary,
             database=database,
             **data,
         )
-        return self
+        return rowcount > 0
 
     async def save(
         self: MODEL_TV,
@@ -671,11 +671,11 @@ class Model:
         database: typing.Optional[Database] = None,
     ) -> bool:
         await self.before_delete()
-        deleted = await self.__class__.delete_many(
+        row_count = await self.__class__.delete_many(
             self.schema.primary_field == self.primary, database=database
         )
         await self.after_delete()
-        return deleted
+        return row_count > 0
 
     async def get_or_create(
         self: MODEL_TV,
@@ -702,9 +702,48 @@ class Model:
                     *conditons, database=database, fields=fields
                 )
                 if not ins:
-                    raise UnkownException() from e
+                    raise e
         assert ins
         return ins, created
+
+    async def create_or_update(
+        self: MODEL_TV,
+        key_fields: typing.Sequence[Field],
+        database: typing.Optional[Database] = None,
+        fields: typing.Sequence[Field] = (),
+    ) -> typing.Tuple[MODEL_TV, bool, bool]:
+        if not database:
+            database = self.__class__.get_database(
+                self.Operation.CREATE, self.table_name
+            )
+        conditons = []
+        created = False
+        updated = False
+        for f in key_fields:
+            conditons.append(f == getattr(self, f.model_name))
+        async with database.transaction():
+            ins = await self.__class__.get(
+                *conditons,
+                database=database,
+                fields=(self.schema.primary_field,),
+                for_update=True,
+            )
+            if not ins:
+                try:
+                    ins = await self.create(database=database, fields=fields)
+                    created = True
+                except pymysql.IntegrityError as e:
+                    ins = await self.__class__.get(
+                        *conditons, database=database, fields=fields
+                    )
+                    if not ins:
+                        raise e
+            else:
+                setattr(self, self.schema.primary_field.model_name, ins.primary)
+                updated = await self.update()
+                ins = self
+        assert ins
+        return ins, created, updated
 
     @classmethod
     def get_table_name(cls) -> str:
@@ -827,25 +866,26 @@ class Model:
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
-    ) -> bool:
+    ) -> int:
         return await Curd(model=cls, database=database).where(*conditions).delete()
 
     @classmethod
     async def upsert(
         cls,
+        insert_data: typing.List[typing.Dict[str, typing.Any]],
         database: typing.Optional[Database] = None,
         update_fields: typing.Sequence[str] = (),
-        **insert_data: typing.Any,
-    ) -> typing.Tuple[int, int]:
+    ) -> typing.Tuple[bool, bool]:
         """
         Using insert on duplicate: https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
         """
-        return await Insert(
+        _, rowcount = await Insert(
             model=cls,
             database=database,
-            insert_data=[insert_data],
+            insert_data=insert_data,
             update_fields=update_fields,
         ).exec()
+        return rowcount == 1, rowcount == 2
 
     @classmethod
     async def bulk_create(
@@ -1106,17 +1146,19 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         assert data
         return data[0]
 
-    async def delete(self) -> bool:
-        return bool(
+    async def delete(self) -> int:
+        return (
             await self.get_database(Model.Operation.DELETE).execute(
                 self.to_delete_sql(), self._vars
             )
-        )
+        )[1]
 
     async def update(self, **data) -> int:
-        return await self.get_database(Model.Operation.UPDATE).execute(
-            self.to_update_sql(data), self._vars
-        )
+        return (
+            await self.get_database(Model.Operation.UPDATE).execute(
+                self.to_update_sql(data), self._vars
+            )
+        )[1]
 
     def where(
         self: CURD_TV,

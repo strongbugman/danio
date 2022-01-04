@@ -4,7 +4,3 @@ class SchemaException(Exception):
 
 class ValidateException(Exception):
     pass
-
-
-class UnkownException(Exception):
-    pass
