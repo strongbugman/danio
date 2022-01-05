@@ -501,6 +501,14 @@ async def test_combo_operations():
     assert up.id
     assert not created
     assert not updated
+    # --
+    up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
+        key_fields=(UserProfile.user_id,),
+        fields=(UserProfile.user_id, UserProfile.level),
+    )
+    assert up.id
+    assert not created
+    assert not updated
 
 
 @pytest.mark.asyncio

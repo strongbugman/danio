@@ -696,6 +696,7 @@ class Model:
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
         validate: bool = True,
+        for_udpate: bool = False,
     ) -> typing.Tuple[MODEL_TV, bool]:
         if not database:
             # using write db by default
@@ -706,7 +707,9 @@ class Model:
         created = False
         for f in key_fields:
             conditons.append(f == getattr(self, f.model_name))
-        ins = await self.__class__.get(*conditons, database=database, fields=fields)
+        ins = await self.__class__.get(
+            *conditons, database=database, fields=fields, for_update=for_udpate
+        )
         if not ins:
             try:
                 ins = await self.create(
@@ -715,7 +718,7 @@ class Model:
                 created = True
             except pymysql.IntegrityError as e:
                 ins = await self.__class__.get(
-                    *conditons, database=database, fields=fields
+                    *conditons, database=database, fields=fields, for_update=for_udpate
                 )
                 if not ins:
                     raise e
@@ -733,36 +736,24 @@ class Model:
             database = self.__class__.get_database(
                 self.Operation.CREATE, self.table_name
             )
-        conditons = []
+        if fields and self.schema.primary_field.name not in (f.name for f in fields):
+            fields = list(fields)
+            fields.append(self.schema.primary_field)
+
         created = False
         updated = False
-        for f in key_fields:
-            conditons.append(f == getattr(self, f.model_name))
         async with database.transaction():
-            ins = await self.__class__.get(
-                *conditons,
+            ins, created = await self.get_or_create(
+                key_fields,
                 database=database,
-                fields=(self.schema.primary_field,),
-                for_update=True,
+                fields=fields,
+                validate=validate,
+                for_udpate=True,
             )
-            if not ins:
-                try:
-                    async with database.transaction():
-                        ins = await self.create(
-                            database=database, fields=fields, validate=validate
-                        )
-                        created = True
-                except pymysql.IntegrityError as e:
-                    ins = await self.__class__.get(
-                        *conditons, database=database, fields=fields, for_update=True
-                    )
-                    if not ins:
-                        raise e
-            else:
+            if not created:
                 setattr(self, self.schema.primary_field.model_name, ins.primary)
-                updated = await self.update(validate=validate)
+                updated = await self.update(validate=validate, fields=fields)
                 ins = self
-        assert ins
         return ins, created, updated
 
     @classmethod
