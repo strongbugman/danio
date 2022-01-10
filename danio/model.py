@@ -13,7 +13,7 @@ import random
 import re
 import typing
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import reduce
 
 import pymysql
@@ -232,14 +232,14 @@ class TimeField(ComplexField):
 class DateField(ComplexField):
     TYPE: typing.ClassVar[str] = "date"
 
-    default: date = date.fromtimestamp(0)
+    default: typing.Callable = lambda: datetime.now().date()  # noqa
 
 
 @dataclasses.dataclass(eq=False)
 class DateTimeField(ComplexField):
     TYPE: typing.ClassVar[str] = "datetime"
 
-    default: datetime = datetime.fromtimestamp(0)
+    default: typing.Callable = datetime.now
 
 
 @dataclasses.dataclass(eq=False)
@@ -551,12 +551,6 @@ class Model:
     ] = True  # do not impact subclass, default false for every class except defined as true
     _schema: typing.ClassVar[typing.Optional[Schema]] = None
 
-    def __post_init__(self):
-        for f in self.schema.fields:
-            value = getattr(self, f.model_name)
-            if isinstance(value, Field):
-                setattr(self, f.model_name, f.default_value)
-
     @class_property
     @classmethod
     def table_name(cls) -> str:
@@ -574,31 +568,17 @@ class Model:
         assert self.schema.primary_field
         return getattr(self, self.schema.primary_field.model_name)
 
-    def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
-        """Dump dataclass to DB level dict"""
-        data = {}
-        field_names = {f.name for f in fields}
-        for f in self.schema.fields:
-            if field_names and f.name not in field_names:
-                continue
-            data[f.name] = f.to_database(getattr(self, f.model_name))
+    def __post_init__(self):
+        self.after_init()
 
-        return data
-
-    async def validate(self):
+    def after_init(self):
         for f in self.schema.fields:
             value = getattr(self, f.model_name)
-            # choices
-            if f.enum:
-                if isinstance(value, enum.Enum):
-                    value = value.value
-                if value not in set((c.value for c in f.enum)):
-                    raise ValidateException(
-                        f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
-                    )
-            # no default
-            if isinstance(value, f.NoDefault):
-                raise ValidateException(f"{self.table_name}.{f.model_name} required!")
+            if isinstance(value, Field):
+                setattr(self, f.model_name, f.default_value)
+
+    async def after_read(self):
+        pass
 
     async def before_create(self, validate: bool = True):
         if validate:
@@ -626,6 +606,32 @@ class Model:
 
     async def after_delete(self):
         pass
+
+    async def validate(self):
+        for f in self.schema.fields:
+            value = getattr(self, f.model_name)
+            # choices
+            if f.enum:
+                if isinstance(value, enum.Enum):
+                    value = value.value
+                if value not in set((c.value for c in f.enum)):
+                    raise ValidateException(
+                        f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
+                    )
+            # no default
+            if isinstance(value, f.NoDefault):
+                raise ValidateException(f"{self.table_name}.{f.model_name} required!")
+
+    def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
+        """Dump dataclass to DB level dict"""
+        data = {}
+        field_names = {f.name for f in fields}
+        for f in self.schema.fields:
+            if field_names and f.name not in field_names:
+                continue
+            data[f.name] = f.to_database(getattr(self, f.model_name))
+
+        return data
 
     async def create(
         self: MODEL_TV,
@@ -1149,11 +1155,15 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
     async def fetch_all(self) -> typing.List[MODEL_TV]:
         assert self.model
-        return self.model.load(
+        inses = self.model.load(
             await self.get_database(Model.Operation.READ).fetch_all(
                 self.to_select_sql(), self._vars
             )
         )
+        for ins in inses:
+            await ins.after_read()
+
+        return inses
 
     async def fetch_one(self) -> typing.Optional[Model]:
         assert self.model
@@ -1161,9 +1171,16 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             self.to_select_sql(), self._vars
         )
         if data:
-            return self.model.load([data])[0]
+            ins = self.model.load([data])[0]
+            await ins.after_read()
+            return ins
         else:
             return None
+
+    async def fetch_row(self) -> typing.List[typing.Mapping]:
+        return await self.get_database(Model.Operation.READ).fetch_all(
+            self.to_select_sql(), self._vars
+        )
 
     async def fetch_count(self) -> int:
         data = await self.get_database(Model.Operation.READ).fetch_one(

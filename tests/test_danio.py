@@ -60,11 +60,8 @@ class User(model.Model):
         user_count += 1
         await super().before_create(**kwargs)
 
-    async def before_save(self, **kwargs):
-        self.updated_at = datetime.datetime.utcnow()
-        if self.created_at.ctime() == "Thu Jan  1 00:00:00 1970":
-            self.created_at = self.updated_at
-        await super().before_save(**kwargs)
+    async def before_update(self, **kwargs):
+        self.updated_at = datetime.datetime.now()
 
     async def validate(self):
         await super().validate()
@@ -115,7 +112,8 @@ async def test_sql():
     u = User(name="test_user")
     await asyncio.sleep(0.1)
     await u.save()
-    assert u.updated_at >= u.created_at
+    assert u.updated_at
+    assert u.created_at
     assert u.id > 0
     assert u.gender is u.Gender.MALE
     assert u.table_name == User.table_name
@@ -358,8 +356,8 @@ async def test_field():
     assert t.fchar == ""
     assert t.ftext == ""
     assert t.ftime == datetime.timedelta(0)
-    assert t.fdate == datetime.date.fromtimestamp(0)
-    assert t.fdatetime == datetime.datetime.fromtimestamp(0)
+    assert t.fdate
+    assert t.fdatetime
     assert t.fjson1 == []
     assert t.fjson2 == {}
     await t.save()
@@ -373,8 +371,8 @@ async def test_field():
     assert t.fchar == ""
     assert t.ftext == ""
     assert t.ftime == datetime.timedelta(0)
-    assert t.fdate == datetime.date.fromtimestamp(0)
-    assert t.fdatetime == datetime.datetime.fromtimestamp(0)
+    assert t.fdate
+    assert t.fdatetime
     assert t.fjson1 == []
     assert t.fjson2 == {}
     # update
