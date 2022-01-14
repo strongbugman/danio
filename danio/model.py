@@ -77,7 +77,10 @@ class Field:
 
     def __hash__(self):
         return hash(
-            (self.name, self.type.split("(")[0] if "int" in self.type else self.type)
+            (
+                self.name,
+                (self.type.split("(")[0] if "int" in self.type else self.type).lower(),
+            )
         )
 
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
