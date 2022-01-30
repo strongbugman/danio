@@ -12,6 +12,7 @@ import json
 import random
 import re
 import typing
+import warnings
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import reduce
@@ -26,7 +27,7 @@ from .utils import class_property
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
-CURD_TV = typing.TypeVar("CURD_TV", bound="Curd")
+CURD_TV = typing.TypeVar("CURD_TV", bound="Crud")
 MARKER_TV = typing.TypeVar("MARKER_TV", bound="SQLMarker")
 CASE_TV = typing.TypeVar("CASE_TV", bound="SQLCase")
 
@@ -715,7 +716,7 @@ class Model:
         created = False
         for f in key_fields:
             conditons.append(f == getattr(self, f.model_name))
-        ins = await self.__class__.get(
+        ins = await self.__class__.fetch_one(
             *conditons, database=database, fields=fields, for_update=for_udpate
         )
         if not ins:
@@ -725,7 +726,7 @@ class Model:
                 )
                 created = True
             except pymysql.IntegrityError as e:
-                ins = await self.__class__.get(
+                ins = await self.__class__.fetch_one(
                     *conditons, database=database, fields=fields, for_update=for_udpate
                 )
                 if not ins:
@@ -794,13 +795,13 @@ class Model:
         fields: typing.Sequence[Field] = tuple(),
         row="",
         is_and=True,
-    ) -> Curd[MODEL_TV]:
-        return Curd(model=cls, fields=fields, database=database).where(
+    ) -> Crud[MODEL_TV]:
+        return Crud(model=cls, fields=fields, database=database).where(
             *conditions, is_and=is_and, row=row
         )
 
     @classmethod
-    async def select(
+    async def fetch_all(
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         fields: typing.Sequence[Field] = tuple(),
@@ -813,7 +814,7 @@ class Model:
         offset=0,
     ) -> typing.List[MODEL_TV]:
         return (
-            await Curd(  # type: ignore
+            await Crud(  # type: ignore
                 model=cls,
                 fields=fields,
                 _order_by=order_by,
@@ -829,7 +830,7 @@ class Model:
         )
 
     @classmethod
-    async def get(
+    async def fetch_one(
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
@@ -840,7 +841,7 @@ class Model:
         offset=0,
     ) -> typing.Optional[MODEL_TV]:
         return (
-            await Curd(  # type: ignore
+            await Crud(  # type: ignore
                 model=cls,
                 fields=fields,
                 _order_by=order_by,
@@ -855,14 +856,14 @@ class Model:
         )
 
     @classmethod
-    async def count(
+    async def fetch_count(
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         fields: typing.Sequence[Field] = tuple(),
         database: typing.Optional[Database] = None,
     ) -> int:
         return (
-            await Curd(model=cls, database=database, fields=fields)
+            await Crud(model=cls, database=database, fields=fields)
             .where(*conditions)
             .fetch_count()
         )
@@ -875,7 +876,7 @@ class Model:
         **data: typing.Any,
     ) -> int:
         return (
-            await Curd(model=cls, database=database).where(*conditions).update(**data)
+            await Crud(model=cls, database=database).where(*conditions).update(**data)
         )
 
     @classmethod
@@ -884,7 +885,7 @@ class Model:
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
     ) -> int:
-        return await Curd(model=cls, database=database).where(*conditions).delete()
+        return await Crud(model=cls, database=database).where(*conditions).delete()
 
     @classmethod
     async def upsert(
@@ -972,6 +973,22 @@ class Model:
         for ins in instances:
             await ins.after_delete()
         return row_count
+
+    # deprecation
+    @classmethod
+    async def count(cls, *args, **kwargs):
+        warnings.warn("Will discard", DeprecationWarning)
+        return await cls.fetch_count(*args, **kwargs)
+
+    @classmethod
+    async def select(cls, *args, **kwargs):
+        warnings.warn("Will discard", DeprecationWarning)
+        return await cls.fetch_all(*args, **kwargs)
+
+    @classmethod
+    async def get(cls, *args, **kwargs):
+        warnings.warn("Will discard", DeprecationWarning)
+        return await cls.fetch_one(*args, **kwargs)
 
 
 # query builder
@@ -1138,7 +1155,7 @@ class BaseSQLBuilder(SQLMarker):
 
 
 @dataclasses.dataclass
-class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
+class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     OPERATION: typing.ClassVar[Operation] = Operation.READ
 
     model: typing.Optional[typing.Type[MODEL_TV]] = None
@@ -1220,24 +1237,24 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
         return self
 
-    def limit(self, n: int) -> Curd:
+    def limit(self, n: int) -> Crud:
         self._limit = n
         return self
 
-    def offset(self, n: int) -> Curd:
+    def offset(self, n: int) -> Crud:
         self._offset = n
         return self
 
-    def order_by(self, f: typing.Union[Field, SQLExpression], asc=True) -> Curd:
+    def order_by(self, f: typing.Union[Field, SQLExpression], asc=True) -> Crud:
         self._order_by = f
         self._order_by_asc = asc
         return self
 
-    def for_update(self) -> Curd:
+    def for_update(self) -> Crud:
         self._for_update = True
         return self
 
-    def for_share(self) -> Curd:
+    def for_share(self) -> Crud:
         self._for_share = True
         return self
 

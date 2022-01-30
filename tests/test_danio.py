@@ -120,14 +120,14 @@ async def test_sql():
     with pytest.raises(danio.ValidateException):
         await User().save()
     # read
-    assert await User.get(User.id == u.id)
+    assert await User.fetch_one(User.id == u.id)
     assert await User.where(User.id == u.id).fetch_one()
     assert await User.where(row=f"id = {u.id}").fetch_one()
     # read with limit
-    assert await User.select(User.id == u.id, limit=1)
+    assert await User.fetch_all(User.id == u.id, limit=1)
     assert await User.where(User.id == u.id).limit(1).fetch_all()
     # read with order by
-    assert (await User.select(limit=1, order_by=User.name, order_by_asc=False))[0]
+    assert (await User.fetch_all(limit=1, order_by=User.name, order_by_asc=False))[0]
     assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
     assert (
         await User.where()
@@ -138,52 +138,53 @@ async def test_sql():
     # read with page
     for _ in range(10):
         await User(name="test_users").save()
-    assert await User.get(offset=10)
-    assert not await User.get(offset=11)
+    assert await User.fetch_one(offset=10)
+    assert not await User.fetch_one(offset=11)
     assert await User.where().limit(1).offset(10).fetch_one()
     assert not await User.where().limit(1).offset(11).fetch_one()
     # count
-    assert (await User.count()) == 11
+    assert (await User.fetch_count()) == 11
     assert await User.where().fetch_count() == 11
     assert await User.where(User.id == -1).fetch_count() == 0
     assert user_count == 11
     # save with special fields only
+    u = await User.fetch_one()
     u = await User.get()
     u.name = "tester"
     u.gender = u.Gender.OTHER
     u = await u.save(fields=[User.name])
-    nu = await User.get(User.id == u.id)
+    nu = await User.fetch_one(User.id == u.id)
     assert nu.name == "tester"
     assert nu.gender == User.Gender.MALE
     assert user_count == 11
     # save with wrong field
-    u = await User.get()
+    u = await User.fetch_one()
     u.gender = 10
     with pytest.raises(danio.ValidateException):
         await u.save()
     # update
-    u = await User.get()
+    u = await User.fetch_one()
     u.name = "admin_user"
     await u.save()
     assert u.name == "admin_user"
     await User.update_many(User.id == u.id, name=User.name.to_database("admin_user2"))
-    assert (await User.get()).name == "admin_user2"
+    assert (await User.fetch_one()).name == "admin_user2"
     # read
-    u = (await User.select(User.id == u.id))[0]
+    u = (await User.fetch_all(User.id == u.id))[0]
     assert u.name == "admin_user2"
     # delete
     await u.delete()
-    assert not await User.select(User.id == u.id)
-    u = await User.get()
+    assert not await User.fetch_all(User.id == u.id)
+    u = await User.fetch_one()
     await User.where(User.id == u.id).delete()
-    assert not await User.select(User.id == u.id)
+    assert not await User.fetch_all(User.id == u.id)
     # create with id
     u = User(id=101, name="test_user")
     await u.save(force_insert=True)
-    u = (await User.select(User.id == u.id))[0]
+    u = (await User.fetch_all(User.id == u.id))[0]
     assert u.name == "test_user"
     # multi where condition
-    assert await User.select(
+    assert await User.fetch_all(
         ((User.id != 1) | (User.name != "")) & (User.gender == User.Gender.MALE)
     )
     assert await User.where(User.id != 1, User.name != "", is_and=False).fetch_all()
@@ -192,17 +193,17 @@ async def test_sql():
         .where(User.gender == User.Gender.FEMALE)
         .fetch_all()
     )
-    assert await User.select(User.name.like("test_%"))
-    assert await User.select(User.gender.contains([g.value for g in User.Gender]))
-    assert (await User.select(fields=[User.id]))[0].name == User.name
+    assert await User.fetch_all(User.name.like("test_%"))
+    assert await User.fetch_all(User.gender.contains([g.value for g in User.Gender]))
+    assert (await User.fetch_all(fields=[User.id]))[0].name == User.name
     # combine condition
-    u = await User.get()
+    u = await User.fetch_one()
     u.age = 2
     await u.save()
-    assert await User.select((User.age + 1) == 3)
+    assert await User.fetch_all((User.age + 1) == 3)
     # delete many
     await User.delete_many(User.id >= 1)
-    assert not await User.select()
+    assert not await User.fetch_all()
     # transation
     db = User.get_database(danio.Operation.UPDATE, User.table_name)
     async with db.transaction():
@@ -271,27 +272,27 @@ async def test_complicated_update():
     # +1
     u = await User(name="rails").save()
     await User.where(User.id == u.id).update(age=User.age + 1)
-    assert (await User.get(User.id == u.id)).age == u.age + 1
+    assert (await User.fetch_one(User.id == u.id)).age == u.age + 1
     # *1
     await User.where(User.id == u.id).update(age=User.age * 1)
-    assert (await User.get(User.id == u.id)).age == u.age + 1
+    assert (await User.fetch_one(User.id == u.id)).age == u.age + 1
     # /1
     await User.where(User.id == u.id).update(age=User.age / 1)
-    assert (await User.get(User.id == u.id)).age == u.age + 1
+    assert (await User.fetch_one(User.id == u.id)).age == u.age + 1
     # -1
     await User.where(User.id == u.id).update(age=User.age - 1)
-    assert (await User.get(User.id == u.id)).age == u.age
+    assert (await User.fetch_one(User.id == u.id)).age == u.age
     # +self
     u.age = 1
     await u.save()
     await User.where(User.id == u.id).update(age=User.age + User.age)
-    assert (await User.get(User.id == u.id)).age == u.age * 2
+    assert (await User.fetch_one(User.id == u.id)).age == u.age * 2
     # -self
     await User.where(User.id == u.id).update(age=User.age - User.age)
-    assert (await User.get(User.id == u.id)).age == 0
+    assert (await User.fetch_one(User.id == u.id)).age == 0
     # combine
     await User.where(User.id == u.id).update(age=User.age - 1 + 10)
-    assert (await User.get(User.id == u.id)).age == 9
+    assert (await User.fetch_one(User.id == u.id)).age == 9
     assert await User.where((User.id + 1) > u.id).fetch_one()
     assert await User.where((User.id + 0) >= u.id).fetch_one()
     assert await User.where((User.id - 1) < u.id).fetch_one()
@@ -299,23 +300,23 @@ async def test_complicated_update():
     assert await User.where((User.id - 1) != u.id).fetch_one()
     # multi express
     await User.where(User.id == u.id).update(age=User.age + 1 + (User.age / 9))
-    assert (await User.get(User.id == u.id)).age == 11
+    assert (await User.fetch_one(User.id == u.id)).age == 11
     await User.where(User.id == u.id).update(age=User.age + 1 - (User.age / 11))
-    assert (await User.get(User.id == u.id)).age == 11
+    assert (await User.fetch_one(User.id == u.id)).age == 11
     await User.where(User.id == u.id).update(age=(User.age + 1) * (User.age / 11))
-    assert (await User.get(User.id == u.id)).age == 12
+    assert (await User.fetch_one(User.id == u.id)).age == 12
     await User.where(User.id == u.id).update(age=(User.age + 1) / (User.age / 12) - 2)
-    assert (await User.get(User.id == u.id)).age == 11
+    assert (await User.fetch_one(User.id == u.id)).age == 11
     # case
     await User.where(User.id == u.id).update(
         age=User.age.case(User.age > 10, 1).case(User.age < 10, 10)
     )
-    assert (await User.get(User.id == u.id)).age == 1
+    assert (await User.fetch_one(User.id == u.id)).age == 1
     # case default
     await User.where(User.id == u.id).update(
         age=User.age.case(User.age > 10, 1, default=18).case(User.age <= 0, 10)
     )
-    assert (await User.get(User.id == u.id)).age == 18
+    assert (await User.fetch_one(User.id == u.id)).age == 18
 
 
 @pytest.mark.asyncio
@@ -361,7 +362,7 @@ async def test_field():
     assert t.fjson2 == {}
     await t.save()
     # read
-    t = await Table.get()
+    t = await Table.fetch_one()
     assert t.fint == 0
     assert t.ftint == 0
     assert not t.fbool
@@ -381,7 +382,7 @@ async def test_field():
     t.ftint = 1
     t.fbool = True
     t.ffloat = 2.123456
-    t.fdecimal = decimal.Decimal("2.123456")
+    t.fdecimal = decimal.Decimal("2.12")
     t.fchar = "hello"
     t.ftext = "long story"
     t.ftime = datetime.timedelta(hours=11, seconds=11)
@@ -391,7 +392,7 @@ async def test_field():
     t.fjson2.update(x=3, y=4, z=5)
     await t.save()
     # read
-    t = await Table.get()
+    t = await Table.fetch_one()
     assert t.fint == 1
     assert t.fsint == 1
     assert t.fbint == 1
@@ -425,24 +426,24 @@ async def test_bulk_operations():
     assert users[1].id == 34
     assert users[9].id == 42
     # update
-    users = await User.select()
+    users = await User.fetch_all()
     for user in users:
         user.name += f"_updated_{user.id}"
     await User.bulk_update(users)
-    for user in await User.select():
+    for user in await User.fetch_all():
         assert user.name.endswith(f"_updated_{user.id}")
     # update with special fields
-    users = await User.select()
+    users = await User.fetch_all()
     for user in users:
         user.name += f"_updated_{user.id}"
         user.gender = User.Gender.OTHER
     await User.bulk_update(users, fields=(User.name,))
-    for user in await User.select():
+    for user in await User.fetch_all():
         assert user.name.endswith(f"_updated_{user.id}")
         assert user.gender == User.gender.default
     # delete
     await User.bulk_delete(users)
-    assert not await User.select()
+    assert not await User.fetch_all()
 
 
 @pytest.mark.asyncio
@@ -527,7 +528,7 @@ async def test_schema():
 
     assert danio.Schema.from_model(UserProfile) == UserProfile.schema
     await db.execute(UserProfile.schema.to_sql())
-    assert not (await UserProfile.select())
+    assert not (await UserProfile.fetch_all())
     assert (
         len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
     )
