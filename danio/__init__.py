@@ -2,7 +2,7 @@ from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
 from .model import (
-    MODEL_TV,
+    Operation,
     CharField,
     DateField,
     DateTimeField,
@@ -26,8 +26,8 @@ __all__ = (
     "Database",
     "SchemaException",
     "ValidateException",
+    "Operation",
     "Model",
-    "MODEL_TV",
     "Schema",
     "manage",
     "field",

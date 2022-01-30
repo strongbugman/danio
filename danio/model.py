@@ -530,15 +530,16 @@ class Migration:
         return ";\n".join(sqls)
 
 
+@enum.unique
+class Operation(enum.IntEnum):
+    CREATE = 1
+    READ = 2
+    UPDATE = 3
+    DELETE = 4
+
+
 @dataclasses.dataclass
 class Model:
-    @enum.unique
-    class Operation(enum.IntEnum):
-        CREATE = 1
-        READ = 2
-        UPDATE = 3
-        DELETE = 4
-
     id: int = field(field_cls=IntField, auto_increment=True, default=0)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
@@ -709,9 +710,7 @@ class Model:
     ) -> typing.Tuple[MODEL_TV, bool]:
         if not database:
             # using write db by default
-            database = self.__class__.get_database(
-                self.Operation.CREATE, self.table_name
-            )
+            database = self.__class__.get_database(Operation.CREATE, self.table_name)
         conditons = []
         created = False
         for f in key_fields:
@@ -742,9 +741,7 @@ class Model:
         validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool, bool]:
         if not database:
-            database = self.__class__.get_database(
-                self.Operation.CREATE, self.table_name
-            )
+            database = self.__class__.get_database(Operation.CREATE, self.table_name)
         if fields and self.schema.primary_field.name not in (f.name for f in fields):
             fields = list(fields)
             fields.append(self.schema.primary_field)
@@ -1125,12 +1122,12 @@ class SQLCase(SQLMarker):
 
 @dataclasses.dataclass
 class BaseSQLBuilder(SQLMarker):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.READ
+    OPERATION: typing.ClassVar[Operation] = Operation.READ
 
     model: typing.Optional[typing.Type[Model]] = None
     database: typing.Optional[Database] = None
 
-    def get_database(self, operation: typing.Optional[Model.Operation] = None):
+    def get_database(self, operation: typing.Optional[Operation] = None):
         assert self.model
         if not self.database:
             return self.model.get_database(
@@ -1142,7 +1139,7 @@ class BaseSQLBuilder(SQLMarker):
 
 @dataclasses.dataclass
 class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.READ
+    OPERATION: typing.ClassVar[Operation] = Operation.READ
 
     model: typing.Optional[typing.Type[MODEL_TV]] = None
     fields: typing.Sequence[Field] = tuple()
@@ -1159,7 +1156,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     async def fetch_all(self) -> typing.List[MODEL_TV]:
         assert self.model
         inses = self.model.load(
-            await self.get_database(Model.Operation.READ).fetch_all(
+            await self.get_database(Operation.READ).fetch_all(
                 self.to_select_sql(), self._vars
             )
         )
@@ -1168,9 +1165,9 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
         return inses
 
-    async def fetch_one(self) -> typing.Optional[Model]:
+    async def fetch_one(self) -> typing.Optional[MODEL_TV]:
         assert self.model
-        data = await self.get_database(Model.Operation.READ).fetch_one(
+        data = await self.get_database(Operation.READ).fetch_one(
             self.to_select_sql(), self._vars
         )
         if data:
@@ -1181,12 +1178,12 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             return None
 
     async def fetch_row(self) -> typing.List[typing.Mapping]:
-        return await self.get_database(Model.Operation.READ).fetch_all(
+        return await self.get_database(Operation.READ).fetch_all(
             self.to_select_sql(), self._vars
         )
 
     async def fetch_count(self) -> int:
-        data = await self.get_database(Model.Operation.READ).fetch_one(
+        data = await self.get_database(Operation.READ).fetch_one(
             self.to_select_sql(count=True), self._vars
         )
         assert data
@@ -1194,14 +1191,14 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
     async def delete(self) -> int:
         return (
-            await self.get_database(Model.Operation.DELETE).execute(
+            await self.get_database(Operation.DELETE).execute(
                 self.to_delete_sql(), self._vars
             )
         )[1]
 
     async def update(self, **data) -> int:
         return (
-            await self.get_database(Model.Operation.UPDATE).execute(
+            await self.get_database(Operation.UPDATE).execute(
                 self.to_update_sql(data), self._vars
             )
         )[1]
@@ -1296,7 +1293,7 @@ class Curd(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
 @dataclasses.dataclass
 class Insert(BaseSQLBuilder):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.CREATE
+    OPERATION: typing.ClassVar[Operation] = Operation.CREATE
     insert_data: typing.Sequence[typing.Dict[str, str]] = dataclasses.field(
         default_factory=list
     )
@@ -1330,7 +1327,7 @@ class Insert(BaseSQLBuilder):
 
 @dataclasses.dataclass
 class CaseUpdate(BaseSQLBuilder):
-    OPERATION: typing.ClassVar[Model.Operation] = Model.Operation.UPDATE
+    OPERATION: typing.ClassVar[Operation] = Operation.UPDATE
     data: typing.List[typing.Dict[str, str]] = dataclasses.field(default_factory=list)
 
     async def exec(self) -> int:

@@ -10,16 +10,15 @@ import typing
 import pytest
 
 import danio
-from danio import Database, SchemaException, ValidateException, manage, model
 
-db = Database(
+db = danio.Database(
     "mysql://root:app@localhost:3306/",
     maxsize=1,
     charset="utf8mb4",
     use_unicode=True,
     connect_timeout=60,
 )
-read_db = Database(
+read_db = danio.Database(
     "mysql://root:app@localhost:3306/",
     maxsize=1,
     charset="utf8mb4",
@@ -33,27 +32,27 @@ user_count = 0
 
 
 @dataclasses.dataclass
-class User(model.Model):
+class User(danio.Model):
     class Gender(enum.Enum):
         MALE = 0
         FEMALE = 1
         OTHER = 2
 
-    name: str = model.field(
-        field_cls=model.CharField,
+    name: str = danio.field(
+        field_cls=danio.CharField,
         comment="User name",
-        default=model.CharField.NoDefault,
+        default=danio.CharField.NoDefault,
     )
-    age: int = model.field(field_cls=model.IntField)
-    created_at: datetime.datetime = model.field(
-        field_cls=model.DateTimeField,
+    age: int = danio.field(field_cls=danio.IntField)
+    created_at: datetime.datetime = danio.field(
+        field_cls=danio.DateTimeField,
         comment="when created",
     )
-    updated_at: datetime.datetime = model.field(
-        field_cls=model.DateTimeField,
+    updated_at: datetime.datetime = danio.field(
+        field_cls=danio.DateTimeField,
         comment="when created",
     )
-    gender: Gender = model.field(field_cls=model.IntField, enum=Gender)
+    gender: Gender = danio.field(field_cls=danio.IntField, enum=Gender)
 
     async def before_create(self, **kwargs):
         global user_count
@@ -66,13 +65,13 @@ class User(model.Model):
     async def validate(self):
         await super().validate()
         if not self.name:
-            raise ValidateException("Empty name!")
+            raise danio.ValidateException("Empty name!")
 
     @classmethod
     def get_database(
-        cls, operation: model.Model.Operation, table: str, *args, **kwargs
-    ) -> Database:
-        if operation == model.Model.Operation.READ:
+        cls, operation: danio.Operation, table: str, *args, **kwargs
+    ) -> danio.Database:
+        if operation == danio.Operation.READ:
             return read_db
         else:
             return db
@@ -89,7 +88,7 @@ async def database():
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         )
         await db.execute(f"USE `{db_name}`;")
-        await db.execute(model.Schema.from_model(User).to_sql())
+        await db.execute(danio.Schema.from_model(User).to_sql())
         await read_db.execute(f"USE `{db_name}`;")
         yield db
     finally:
@@ -118,7 +117,7 @@ async def test_sql():
     assert u.gender is u.Gender.MALE
     assert u.table_name == User.table_name
     assert user_count == 1
-    with pytest.raises(ValidateException):
+    with pytest.raises(danio.ValidateException):
         await User().save()
     # read
     assert await User.get(User.id == u.id)
@@ -160,7 +159,7 @@ async def test_sql():
     # save with wrong field
     u = await User.get()
     u.gender = 10
-    with pytest.raises(ValidateException):
+    with pytest.raises(danio.ValidateException):
         await u.save()
     # update
     u = await User.get()
@@ -205,7 +204,7 @@ async def test_sql():
     await User.delete_many(User.id >= 1)
     assert not await User.select()
     # transation
-    db = User.get_database(User.Operation.UPDATE, User.table_name)
+    db = User.get_database(danio.Operation.UPDATE, User.table_name)
     async with db.transaction():
         for u in await User.where(database=db).fetch_all():
             u.name += "_updated"
@@ -224,16 +223,16 @@ async def test_sql():
 
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        user_id: int = model.field(model.IntField)
-        level: int = model.field(model.IntField)
+        user_id: int = danio.field(danio.IntField)
+        level: int = danio.field(danio.IntField)
 
         _table_unique_keys = ((user_id,),)
 
         @classmethod
         def get_database(
-            cls, operation: model.Model.Operation, table: str, *args, **kwargs
-        ) -> Database:
-            if operation == model.Model.Operation.READ:
+            cls, operation: danio.Operation, table: str, *args, **kwargs
+        ) -> danio.Database:
+            if operation == danio.Operation.READ:
                 return read_db
             else:
                 return db
@@ -322,26 +321,26 @@ async def test_complicated_update():
 @pytest.mark.asyncio
 async def test_field():
     @dataclasses.dataclass
-    class Table(model.Model):
-        fsint: int = model.field(field_cls=model.SmallIntField)
-        fint: int = model.field(field_cls=model.IntField)
-        fbint: int = model.field(field_cls=model.BigIntField)
-        ftint: int = model.field(field_cls=model.TinyIntField)
-        fbool: int = model.field(field_cls=model.BoolField)
-        ffloat: int = model.field(field_cls=model.FLoatField)
-        fdecimal: decimal.Decimal = model.field(field_cls=model.DecimalField)
-        fchar: str = model.field(field_cls=model.CharField)
-        ftext: str = model.field(field_cls=model.TextField)
-        ftime: datetime.timedelta = model.field(field_cls=model.TimeField)
-        fdate: datetime.date = model.field(field_cls=model.DateField)
-        fdatetime: datetime.datetime = model.field(field_cls=model.DateTimeField)
-        fjson1: typing.List[int] = model.field(field_cls=model.JsonField, default=[])
-        fjson2: typing.Dict[str, int] = model.field(
-            field_cls=model.JsonField, default=dict
+    class Table(danio.Model):
+        fsint: int = danio.field(field_cls=danio.SmallIntField)
+        fint: int = danio.field(field_cls=danio.IntField)
+        fbint: int = danio.field(field_cls=danio.BigIntField)
+        ftint: int = danio.field(field_cls=danio.TinyIntField)
+        fbool: int = danio.field(field_cls=danio.BoolField)
+        ffloat: int = danio.field(field_cls=danio.FLoatField)
+        fdecimal: decimal.Decimal = danio.field(field_cls=danio.DecimalField)
+        fchar: str = danio.field(field_cls=danio.CharField)
+        ftext: str = danio.field(field_cls=danio.TextField)
+        ftime: datetime.timedelta = danio.field(field_cls=danio.TimeField)
+        fdate: datetime.date = danio.field(field_cls=danio.DateField)
+        fdatetime: datetime.datetime = danio.field(field_cls=danio.DateTimeField)
+        fjson1: typing.List[int] = danio.field(field_cls=danio.JsonField, default=[])
+        fjson2: typing.Dict[str, int] = danio.field(
+            field_cls=danio.JsonField, default=dict
         )
 
         @classmethod
-        def get_database(cls, *args, **kwargs) -> Database:
+        def get_database(cls, *args, **kwargs) -> danio.Database:
             return db
 
     await db.execute(Table.schema.to_sql())
@@ -450,16 +449,16 @@ async def test_bulk_operations():
 async def test_combo_operations():
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        user_id: int = model.field(model.IntField)
-        level: int = model.field(model.IntField)
+        user_id: int = danio.field(danio.IntField)
+        level: int = danio.field(danio.IntField)
 
         _table_unique_keys = ((user_id,),)
 
         @classmethod
         def get_database(
-            cls, operation: model.Model.Operation, table: str, *args, **kwargs
-        ) -> Database:
-            if operation == model.Model.Operation.READ:
+            cls, operation: danio.Operation, table: str, *args, **kwargs
+        ) -> danio.Database:
+            if operation == danio.Operation.READ:
                 return read_db
             else:
                 return db
@@ -513,9 +512,9 @@ async def test_combo_operations():
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = model.field(field_cls=model.IntField, comment="user id")
-        level: int = model.field(field_cls=model.IntField, comment="user level")
-        coins: int = model.field(field_cls=model.IntField, comment="user coins")
+        user_id: int = danio.field(field_cls=danio.IntField, comment="user id")
+        level: int = danio.field(field_cls=danio.IntField, comment="user level")
+        coins: int = danio.field(field_cls=danio.IntField, comment="user coins")
 
         _table_unique_keys: typing.ClassVar = ((user_id,),)
         _table_index_keys: typing.ClassVar = (
@@ -526,7 +525,7 @@ async def test_schema():
             ("level",),
         )
 
-    assert model.Schema.from_model(UserProfile) == UserProfile.schema
+    assert danio.Schema.from_model(UserProfile) == UserProfile.schema
     await db.execute(UserProfile.schema.to_sql())
     assert not (await UserProfile.select())
     assert (
@@ -536,8 +535,8 @@ async def test_schema():
 
     @dataclasses.dataclass
     class BaseUserBackpack(User):
-        user_id: int = model.field(field_cls=model.IntField)
-        weight: int = model.field(field_cls=model.IntField)
+        user_id: int = danio.field(field_cls=danio.IntField)
+        weight: int = danio.field(field_cls=danio.IntField)
 
         _table_abstracted: typing.ClassVar[bool] = True
 
@@ -548,44 +547,44 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = model.field(field_cls=model.IntField, auto_increment=True)
+        pk: int = danio.field(field_cls=danio.IntField, auto_increment=True)
 
-        _table_primary_key: typing.ClassVar[model.Field] = pk
+        _table_primary_key: typing.ClassVar[danio.Field] = pk
 
     # db name
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
-        user_id: int = model.field(field_cls=model.IntField, name="user_id2")
-        weight: int = model.field(field_cls=model.IntField)
+        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
+        weight: int = danio.field(field_cls=danio.IntField)
 
     sql = UserBackpack2.schema.to_sql()
     assert "user_id2" in sql
     assert "weight" in sql
     await db.execute(UserBackpack2.schema.to_sql())
     # from db
-    assert UserBackpack2.schema == await model.Schema.from_db(db, UserBackpack2)
-    assert await model.Schema.from_db(db, UserProfile)
-    assert not await model.Schema.from_db(db, UserBackpack)
+    assert UserBackpack2.schema == await danio.Schema.from_db(db, UserBackpack2)
+    assert await danio.Schema.from_db(db, UserProfile)
+    assert not await danio.Schema.from_db(db, UserBackpack)
     # wrong index
 
     @dataclasses.dataclass
     class UserBackpack3(BaseUserBackpack):
-        user_id: int = model.field(field_cls=model.IntField, name="user_id2")
-        weight: int = model.field(field_cls=model.IntField)
+        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
+        weight: int = danio.field(field_cls=danio.IntField)
 
         _table_index_keys = (("wrong_id"),)
 
-    with pytest.raises(SchemaException):
-        model.Schema.from_model(UserBackpack3)
+    with pytest.raises(danio.SchemaException):
+        danio.Schema.from_model(UserBackpack3)
 
 
 @pytest.mark.asyncio
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = model.field(field_cls=model.IntField)
-        level: int = model.field(field_cls=model.IntField, default=1)
-        coins: int = model.field(field_cls=model.IntField)
+        user_id: int = danio.field(field_cls=danio.IntField)
+        level: int = danio.field(field_cls=danio.IntField, default=1)
+        coins: int = danio.field(field_cls=danio.IntField)
 
         _table_unique_keys: typing.ClassVar = ((user_id,),)
         _table_index_keys: typing.ClassVar = (
@@ -605,8 +604,8 @@ async def test_migrate():
         "CREATE  INDEX `user_id_6969_idx`  on userprofile (`user_id`);"
     )
     # make migration
-    old_schema = await model.Schema.from_db(db, UserProfile)
-    migration: model.Migration = UserProfile.schema - old_schema
+    old_schema = await danio.Schema.from_db(db, UserProfile)
+    migration: danio.Migration = UserProfile.schema - old_schema
     assert len(migration.add_fields) == 1
     assert migration.add_fields[0].name == "level"
     assert len(migration.drop_fields) == 1
@@ -618,10 +617,10 @@ async def test_migrate():
     assert migration.drop_indexes[1].fields[0].name in ("group_id", "user_id")
     # migrate
     await db.execute(migration.to_sql())
-    assert UserProfile.schema == await model.Schema.from_db(db, UserProfile)
+    assert UserProfile.schema == await danio.Schema.from_db(db, UserProfile)
     # down migrate
     await db.execute((~migration).to_sql())
-    assert old_schema == await model.Schema.from_db(db, UserProfile)
+    assert old_schema == await danio.Schema.from_db(db, UserProfile)
     # drop table
     await db.execute((~(UserProfile.schema - None)).to_sql())
 
@@ -630,12 +629,12 @@ async def test_migrate():
 async def test_manage():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = model.field(field_cls=model.IntField)
-        level: int = model.field(field_cls=model.IntField, default=1)
-        coins: int = model.field(field_cls=model.IntField)
+        user_id: int = danio.field(field_cls=danio.IntField)
+        level: int = danio.field(field_cls=danio.IntField, default=1)
+        coins: int = danio.field(field_cls=danio.IntField)
 
     # generate all
-    assert not await manage.make_migration(db, [User], "./tests/migrations")
-    assert await manage.make_migration(db, [UserProfile], "./tests/migrations")
+    assert not await danio.manage.make_migration(db, [User], "./tests/migrations")
+    assert await danio.manage.make_migration(db, [UserProfile], "./tests/migrations")
     # get models
-    assert manage.get_models(["tests"])
+    assert danio.manage.get_models(["tests"])
