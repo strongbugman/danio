@@ -1,5 +1,14 @@
 # Danio
 
+<p>
+<a href="https://github.com/strongbugman/danio/actions">
+    <img src="https://github.com/strongbugman/danio/workflows/Python%20package/badge.svg" alt="Python package">
+</a>
+<a href="https://pypi.org/project/danio/">
+    <img src="https://badge.fury.io/py/danio.svg" alt="Package version">
+</a>
+</p>
+
 Danio is a ORM for python asyncio world.It is designed to make getting easy and clearly.It builds on python's dataclass and encode's [databases](https://github.com/encode/databases)
 
 ## Glance
