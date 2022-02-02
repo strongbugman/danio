@@ -12,14 +12,14 @@ import pytest
 import danio
 
 db = danio.Database(
-    "mysql://root:letmein@server:3306/",
+    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'server')}:3306/",
     maxsize=1,
     charset="utf8mb4",
     use_unicode=True,
     connect_timeout=60,
 )
 read_db = danio.Database(
-    "mysql://root:letmein@server:3306/",
+    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'server')}:3306/",
     maxsize=1,
     charset="utf8mb4",
     use_unicode=True,
