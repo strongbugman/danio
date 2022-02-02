@@ -38,4 +38,4 @@ jobs:
         sudo /etc/init.d/mysql start
     - name: Test
       run: |
-        pytest
+        make test
