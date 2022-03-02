@@ -7,6 +7,9 @@
 <a href="https://pypi.org/project/danio/">
     <img src="https://badge.fury.io/py/danio.svg" alt="Package version">
 </a>
+<a href="https://codecov.io/gh/strongbugman/danio">
+    <img src="https://codecov.io/gh/strongbugman/danio/branch/main/graph/badge.svg" alt="Code coverage">
+</a>
 </p>
 
 
