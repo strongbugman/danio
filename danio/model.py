@@ -62,7 +62,7 @@ class Field:
     def __post_init__(self):
         # from schema sql
         if self.describe:
-            self.auto_incrment = "AUTO_INCREMENT" in self.describe
+            self.auto_increment = "AUTO_INCREMENT" in self.describe
             self.type = self.describe.split(" ")[1]
             tmp = self.COMMENT_PATTERN.findall(self.describe)
             if tmp:
@@ -272,9 +272,7 @@ def field(
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any:
     extras = {}
-    if (
-        default is not Field.FieldDefault
-    ):  # default to field default, allow None defalut
+    if default is not Field.FieldDefault:  # default to field default, allow None
         extras["default"] = default
 
     return field_cls(
@@ -349,7 +347,7 @@ class Schema:
         _add_fields = {f.name: f for f in add_fields}
         drop_fields = set(other.fields) - set(self.fields)
         _drop_fields = {f.name: f for f in drop_fields}
-        change_type_fileds = []
+        change_type_fields = []
         change_type_field_names = set(f.name for f in add_fields) & set(
             f.name for f in drop_fields
         )
@@ -357,7 +355,7 @@ class Schema:
             field = _add_fields[f_name]
             add_fields.remove(field)
             drop_fields.remove(_drop_fields[field.name])
-            change_type_fileds.append(field)
+            change_type_fields.append(field)
 
         return Migration(
             schema=self,
@@ -366,7 +364,7 @@ class Schema:
             drop_indexes=list(set(other.indexes) - set(self.indexes)),
             add_fields=list(add_fields),
             drop_fields=list(drop_fields),
-            change_type_fields=change_type_fileds,
+            change_type_fields=change_type_fields,
         )
 
     def to_sql(self) -> str:
@@ -399,15 +397,15 @@ class Schema:
         for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):
             for keys in index_keys:
                 if keys:
-                    _fileds = []
+                    _fields = []
                     for key in keys:
                         if isinstance(key, Field):
-                            _fileds.append(key)
+                            _fields.append(key)
                         elif isinstance(key, str) and key in fields:
-                            _fileds.append(fields[key])
+                            _fields.append(fields[key])
                         else:
                             raise SchemaException(f"Index: {keys} not supported")
-                    schema.indexes.add(Index(fields=_fileds, unique=i == 1))
+                    schema.indexes.add(Index(fields=_fields, unique=i == 1))
         return schema
 
     @classmethod
@@ -428,13 +426,13 @@ class Schema:
                             break
                 elif "KEY" in line:
                     fields = {f.name: f for f in schema.fields}
-                    index_fileds = []
+                    index_fields = []
                     _names = cls.FIELD_NAME_PATTERN.findall(line)
                     index_name = _names[0]
-                    index_fileds = [fields[n] for n in _names[1:]]
+                    index_fields = [fields[n] for n in _names[1:]]
                     schema.indexes.add(
                         Index(
-                            fields=index_fileds,
+                            fields=index_fields,
                             unique="UNIQUE" in line,
                             name=index_name,
                         )
@@ -546,11 +544,11 @@ class Model:
     _table_prefix: typing.ClassVar[str] = ""
     _table_primary_key: typing.ClassVar[typing.Any] = id
     _table_index_keys: typing.ClassVar[
-        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
-    ] = ((),)
+        typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
+    ] = tuple()
     _table_unique_keys: typing.ClassVar[
-        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
-    ] = ((),)
+        typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
+    ] = tuple()
     _table_abstracted: typing.ClassVar[
         bool
     ] = True  # do not impact subclass, default false for every class except defined as true
@@ -667,11 +665,10 @@ class Model:
         assert self.primary
         await self.before_update(validate=validate)
         data = self.dump(fields=fields)
-        rowcount = await self.__class__.update_many(
+        rowcount = await self.__class__.where(
             self.schema.primary_field == self.primary,
             database=database,
-            **data,
-        )
+        ).update(**data)
         await self.after_update()
         return rowcount > 0
 
@@ -695,9 +692,9 @@ class Model:
         database: typing.Optional[Database] = None,
     ) -> bool:
         await self.before_delete()
-        row_count = await self.__class__.delete_many(
+        row_count = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
-        )
+        ).delete()
         await self.after_delete()
         return row_count > 0
 
@@ -707,18 +704,19 @@ class Model:
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
         validate: bool = True,
-        for_udpate: bool = False,
+        for_update: bool = False,
     ) -> typing.Tuple[MODEL_TV, bool]:
         if not database:
             # using write db by default
             database = self.__class__.get_database(Operation.CREATE, self.table_name)
-        conditons = []
+        conditions = []
         created = False
         for f in key_fields:
-            conditons.append(f == getattr(self, f.model_name))
-        ins = await self.__class__.fetch_one(
-            *conditons, database=database, fields=fields, for_update=for_udpate
-        )
+            conditions.append(f == getattr(self, f.model_name))
+        where = self.__class__.where(*conditions, database=database, fields=fields)
+        if for_update:
+            where = where.for_update()
+        ins = await where.fetch_one()
         if not ins:
             try:
                 ins = await self.create(
@@ -726,9 +724,12 @@ class Model:
                 )
                 created = True
             except pymysql.IntegrityError as e:
-                ins = await self.__class__.fetch_one(
-                    *conditons, database=database, fields=fields, for_update=for_udpate
+                where = self.__class__.where(
+                    *conditions, database=database, fields=fields
                 )
+                if for_update:
+                    where = where.for_update()
+                ins = await where.fetch_one()
                 if not ins:
                     raise e
         assert ins
@@ -755,7 +756,7 @@ class Model:
                 database=database,
                 fields=fields,
                 validate=validate,
-                for_udpate=True,
+                for_update=True,
             )
             if not created:
                 setattr(self, self.schema.primary_field.model_name, ins.primary)
@@ -799,93 +800,6 @@ class Model:
         return Crud(model=cls, fields=fields, database=database).where(
             *conditions, is_and=is_and, row=row
         )
-
-    @classmethod
-    async def fetch_all(
-        cls: typing.Type[MODEL_TV],
-        *conditions: SQLExpression,
-        fields: typing.Sequence[Field] = tuple(),
-        order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None,
-        order_by_asc=False,
-        database: typing.Optional[Database] = None,
-        for_update=False,
-        for_share=False,
-        limit=0,
-        offset=0,
-    ) -> typing.List[MODEL_TV]:
-        return (
-            await Crud(  # type: ignore
-                model=cls,
-                fields=fields,
-                _order_by=order_by,
-                _order_by_asc=order_by_asc,
-                database=database,
-                _for_update=for_update,
-                _for_share=for_share,
-                _limit=limit,
-                _offset=offset,
-            )
-            .where(*conditions)
-            .fetch_all()
-        )
-
-    @classmethod
-    async def fetch_one(
-        cls: typing.Type[MODEL_TV],
-        *conditions: SQLExpression,
-        database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = tuple(),
-        order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None,
-        for_update=False,
-        for_share=False,
-        offset=0,
-    ) -> typing.Optional[MODEL_TV]:
-        return (
-            await Crud(  # type: ignore
-                model=cls,
-                fields=fields,
-                _order_by=order_by,
-                database=database,
-                _for_update=for_update,
-                _for_share=for_share,
-                _limit=1,
-                _offset=offset,
-            )
-            .where(*conditions)
-            .fetch_one()
-        )
-
-    @classmethod
-    async def fetch_count(
-        cls: typing.Type[MODEL_TV],
-        *conditions: SQLExpression,
-        fields: typing.Sequence[Field] = tuple(),
-        database: typing.Optional[Database] = None,
-    ) -> int:
-        return (
-            await Crud(model=cls, database=database, fields=fields)
-            .where(*conditions)
-            .fetch_count()
-        )
-
-    @classmethod
-    async def update_many(
-        cls: typing.Type[MODEL_TV],
-        *conditions: SQLExpression,
-        database: typing.Optional[Database] = None,
-        **data: typing.Any,
-    ) -> int:
-        return (
-            await Crud(model=cls, database=database).where(*conditions).update(**data)
-        )
-
-    @classmethod
-    async def delete_many(
-        cls: typing.Type[MODEL_TV],
-        *conditions: SQLExpression,
-        database: typing.Optional[Database] = None,
-    ) -> int:
-        return await Crud(model=cls, database=database).where(*conditions).delete()
 
     @classmethod
     async def upsert(
@@ -966,10 +880,10 @@ class Model:
     ) -> int:
         for ins in instances:
             await ins.before_delete()
-        row_count = await cls.delete_many(
+        row_count = await cls.where(
             cls.schema.primary_field.contains(tuple(ins.primary for ins in instances)),
             database=database,
-        )
+        ).delete()
         for ins in instances:
             await ins.after_delete()
         return row_count
@@ -978,17 +892,17 @@ class Model:
     @classmethod
     async def count(cls, *args, **kwargs):
         warnings.warn("Will discard", DeprecationWarning)
-        return await cls.fetch_count(*args, **kwargs)
+        return await cls.where(*args, **kwargs).fetch_count()
 
     @classmethod
     async def select(cls, *args, **kwargs):
         warnings.warn("Will discard", DeprecationWarning)
-        return await cls.fetch_all(*args, **kwargs)
+        return await cls.where(*args, **kwargs).fetch_all()
 
     @classmethod
     async def get(cls, *args, **kwargs):
         warnings.warn("Will discard", DeprecationWarning)
-        return await cls.fetch_one(*args, **kwargs)
+        return await cls.where(*args, **kwargs).fetch_one()
 
 
 # query builder

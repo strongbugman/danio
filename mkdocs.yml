@@ -1,0 +1,12 @@
+site_name: Danio
+theme:
+  name: material
+repo_name: strongbugman/danio
+repo_url: https://github.com/strongbugman/danio
+edit_uri: ""
+
+nav:
+  - Introduction: 'index.md'
+  - Model Definition: 'model_definition.md'
+  - Make Queries: 'make_queries.md'
+  - Model Signal: 'model_signal.md'

@@ -39,3 +39,5 @@ jobs:
         MYSQL_PASSWORD: "root"
       run: |
         make test
+        codecov
+        mkdocs gh-deploy --force
