@@ -68,12 +68,20 @@ await Cat(id=1).delete()
 
 ### `database` and `fields` params
 
-All query method support `database` param, if not set danio will call `cls.get_database` to obtain one database instance.
+All query method support `database` param, if not set danio will call `cls.get_database` to obtain one database instance.And we can pass a database with transaction, eg:
+```python
+db = Cat.get_database(danio.Operation.UPDATE, Cat.table_name)
+async with db.transaction():
+    cat = await Cat.where(Cat.id == 1, database=db).for_update().fetch_one()
+    if cat:
+        cat.name += "_updated"
+        await cat.save()
+```
 
-All query method with model layer(interact with model instance), support `fields` param, eg:
+All query method with model layer(interact with model instance), support `fields` param, means only those fields will be select, insert or update, eg:
 ```python
 cat = await Cat.where().fetch_one(fields=[Cat.name])
-print(cat.id)  # will be 0
+print(cat.id)  # will be 0(default id value)
 await Cat(id=1, name="dangdang", age=5).update(fields=[Cat.name])  # only name field will be update in database
 ```
 

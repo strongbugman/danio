@@ -740,6 +740,7 @@ class Model:
         key_fields: typing.Sequence[Field],
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        update_fields: typing.Sequence[Field] = (),
         validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool, bool]:
         if not database:
@@ -760,7 +761,7 @@ class Model:
             )
             if not created:
                 setattr(self, self.schema.primary_field.model_name, ins.primary)
-                updated = await self.update(validate=validate, fields=fields)
+                updated = await self.update(validate=validate, fields=update_fields)
                 ins = self
         return ins, created, updated
 
@@ -823,6 +824,7 @@ class Model:
     async def bulk_create(
         cls: typing.Type[MODEL_TV],
         instances: typing.Sequence[MODEL_TV],
+        fields: typing.Sequence[Field] = (),
         database: typing.Optional[Database] = None,
         validate: bool = True,
     ) -> typing.Sequence[MODEL_TV]:
@@ -830,7 +832,7 @@ class Model:
         for ins in instances:
             await ins.before_create(validate=validate)
 
-        data = [ins.dump() for ins in instances]
+        data = [ins.dump(fields=fields) for ins in instances]
         next_ins_id = (
             await Insert(model=cls, database=database, insert_data=data).exec()
         )[0]

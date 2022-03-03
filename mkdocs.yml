@@ -10,3 +10,5 @@ nav:
   - Model Definition: 'model_definition.md'
   - Make Queries: 'make_queries.md'
   - Model Signal: 'model_signal.md'
+  - Bulk Queries: 'bulk_queries.md'
+  - Combo Queries: 'combo_queries.md'

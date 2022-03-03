@@ -475,7 +475,7 @@ async def test_combo_operations():
     assert up.id
     assert not created
     assert up.level == 10
-    # create or udpate
+    # create or update
     up, created, updated = await UserProfile(user_id=2, level=10).create_or_update(
         key_fields=(UserProfile.user_id,)
     )
@@ -497,9 +497,8 @@ async def test_combo_operations():
     assert not created
     assert not updated
     # --
-    up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
-        key_fields=(UserProfile.user_id,),
-        fields=(UserProfile.user_id, UserProfile.level),
+    up, created, updated = await UserProfile(user_id=2, level=12).create_or_update(
+        key_fields=(UserProfile.user_id,), update_fields=(UserProfile.user_id,)
     )
     assert up.id
     assert not created
