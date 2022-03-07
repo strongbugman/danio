@@ -795,11 +795,11 @@ class Model:
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = tuple(),
-        row="",
+        raw="",
         is_and=True,
     ) -> Crud[MODEL_TV]:
         return Crud(model=cls, fields=fields, database=database).where(
-            *conditions, is_and=is_and, row=row
+            *conditions, is_and=is_and, raw=raw
         )
 
     @classmethod
@@ -1078,7 +1078,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     fields: typing.Sequence[Field] = tuple()
     database: typing.Optional[Database] = None
     _where: typing.Optional[SQLExpression] = None
-    _row_where: str = ""
+    _raw_where: str = ""
     _limit: int = 0
     _offset: int = 0
     _order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None
@@ -1139,7 +1139,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     def where(
         self: CURD_TV,
         *conditions: SQLExpression,
-        row="",
+        raw="",
         is_and=True,
     ) -> CURD_TV:
         if conditions:
@@ -1148,8 +1148,8 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 self._where = self._where & _where
             else:
                 self._where = _where
-        elif row:
-            self._row_where = row
+        elif raw:
+            self._raw_where = raw
 
         return self
 
@@ -1182,8 +1182,8 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             sql = f"SELECT COUNT(*) FROM `{self.model.table_name}`"
         if self._where:
             sql += f" WHERE {self._where.sync(self).to_sql()}"
-        elif self._row_where:
-            sql += f" WHERE {self._row_where}"
+        elif self._raw_where:
+            sql += f" WHERE {self._raw_where}"
         if not count:
             if self._order_by:
                 if isinstance(self._order_by, Field):

@@ -30,7 +30,7 @@ class Cat(danio.Model):
 ```
 There are the corresponding database table schema:
 ```sql
-CREATE TABLE `admin_permission` (
+CREATE TABLE `cat` (
 `id` int(10) NOT NULL AUTO_INCREMENT COMMENT '',
 `name` varchar(255) NOT NULL  COMMENT 'cat name',
 `age` int(10) NOT NULL  COMMENT '',
@@ -116,20 +116,20 @@ Then we inherit Pet:
 class Cat(Pet):
     weight: int = danio.field(danio.IntField)
 ```
-So Cat has 4 field now: id, name, age and weight.We can disable or redefine a field:
+So Cat has 4 field now: *id, name, age and weight*.We can disable or redefine a field:
 ```python
 @dataclasses.dataclass
 class Dog(Pet):
     name: str = ""
     age: int = danio.field(danio.SmallIntField)
 ```
-Now Cat got 2 fields: id, age.We can still use `name` variable as a normal dataclass's variable.And all Cat and Dog got one index by field age.We can change this index too:
+Now Cat got 3 fields: *id, age, weight*.We can still use `name` variable as a normal dataclass's variable.And all Cat and Dog got same one index by field age.We can change this index too:
 ```python
 @dataclasses.dataclass
 class Fish(Pet):
     _table_index_keys = ((Pet.name,),)
 ```
-Or add new one by the original index:
+Or add new one to the original index:
 ```python
 @dataclasses.dataclass
 class Fish(Pet):

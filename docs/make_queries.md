@@ -97,14 +97,14 @@ def where(
     *conditions: SQLExpression,
     database: typing.Optional[Database] = None,
     fields: typing.Sequence[Field] = tuple(),
-    row="",
+    raw="",
     is_and=True,
 ) -> Crud[MODEL_TV]
 ```
 
 ### Read(Model layer)
 
-Get instance or row data back from database:
+Get instance or raw data back from database:
 
 * where().fetch_all - select all matched data and return a list of model instance
 * where().fetch_one - select first matched data and return one model instance

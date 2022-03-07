@@ -98,7 +98,7 @@ This method using [insert on duplicate](https://dev.mysql.com/doc/refman/5.6/en/
 INSERT INTO <table> (<f1>,<f2>) VALUES (<v1>,<v2>)
   ON DUPLICATE KEY UPDATE <f2>=VALUES(<f2>);
 ```
-And this method just execute a row sql, eg:
+And this method just execute a raw sql, eg:
 
 ```python
 created, updated = await User.upsert(

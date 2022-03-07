@@ -121,7 +121,7 @@ async def test_sql():
         await User().save()
     # read
     assert await User.where(User.id == u.id).fetch_one()
-    assert await User.where(row=f"id = {u.id}").fetch_one()
+    assert await User.where(raw=f"id = {u.id}").fetch_one()
     # read with limit
     assert await User.where(User.id == u.id).limit(1).fetch_all()
     # read with order by
