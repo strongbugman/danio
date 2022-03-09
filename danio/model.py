@@ -698,6 +698,18 @@ class Model:
         await self.after_delete()
         return row_count > 0
 
+    async def refetch(
+        self: MODEL_TV,
+        database: typing.Optional[Database] = None,
+    ) -> MODEL_TV:
+        new = await self.__class__.where(
+            self.schema.primary_field == self.primary, database=database
+        ).fetch_one()
+        dataclasses.asdict
+        for f in dataclasses.fields(self):
+            setattr(self, f.name, getattr(new, f.name))
+        return self
+
     async def get_or_create(
         self: MODEL_TV,
         key_fields: typing.Sequence[Field],

@@ -167,6 +167,11 @@ async def test_sql():
     # read
     u = (await User.where(User.id == u.id).fetch_all())[0]
     assert u.name == "admin_user2"
+    # refetch
+    u = await User.where().fetch_one()
+    await User.where(User.id == u.id).update(name="user1")
+    await u.refetch()
+    assert u.name == "user1"
     # delete
     await u.delete()
     assert not await User.where(User.id == u.id).fetch_all()

@@ -47,6 +47,17 @@ async def save(
 ) -> MODEL_TV
 ```
 
+### refetch
+
+refetch instance data from database by primary key
+
+```python
+async def refetch(
+    self: MODEL_TV,
+    database: typing.Optional[Database] = None,
+) -> MODEL_TV:
+```
+
 ### delete
 
 ``` python
@@ -119,7 +130,7 @@ await cat.delete()
 
 ### Other operation
 
-Except `fetch_all`, `fetch_one`, there are row sql operation method(without model layer) for where chain:
+Except `fetch_all`, `fetch_one`, there are raw sql operation method(without model layer) for where chain:
 
 * fetch_count - select count
 
