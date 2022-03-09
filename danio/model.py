@@ -1203,10 +1203,10 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 elif isinstance(self._order_by, SQLExpression):
                     sql += f" ORDER BY {self._order_by.sync(self).to_sql()} {'ASC' if self._order_by_asc else 'DESC'}"
             if self._limit:
-                sql += f" LIMIT {self._limit}"
+                sql += f" LIMIT :{self.mark(self._limit)}"
             if self._offset:
                 assert self._limit, "Offset need limit"
-                sql += f" OFFSET {self._offset}"
+                sql += f" OFFSET :{self.mark(self._offset)}"
             if self._for_update:
                 sql += " FOR UPDATE"
             elif self._for_share:

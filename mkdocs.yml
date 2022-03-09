@@ -12,3 +12,6 @@ nav:
   - Model Signal: 'model_signal.md'
   - Bulk Queries: 'bulk_queries.md'
   - Combo Queries: 'combo_queries.md'
+  - Model Migration: 'model_migration.md'
+  - SQL INJECTION: 'sql_injection.md'
+  - TIPS: 'tips.md'
