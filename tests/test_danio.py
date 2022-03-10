@@ -143,6 +143,8 @@ async def test_sql():
     assert await User.where().fetch_count() == 11
     assert await User.where(User.id == -1).fetch_count() == 0
     assert user_count == 11
+    # row data
+    assert await User.where().fetch_row()
     # save with special fields only
     u = await User.where().fetch_one()
     u.name = "tester"

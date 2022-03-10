@@ -2,7 +2,7 @@
 
 <p>
 <a href="https://github.com/strongbugman/danio/actions">
-    <img src="https://github.com/strongbugman/danio/workflows/Python%20package/badge.svg" alt="Python package">
+    <img src="https://github.com/strongbugman/danio/workflows/UnitTest/badge.svg" alt="UnitTest">
 </a>
 <a href="https://pypi.org/project/danio/">
     <img src="https://badge.fury.io/py/danio.svg" alt="Package version">

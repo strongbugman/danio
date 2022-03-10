@@ -810,6 +810,7 @@ class Model:
         raw="",
         is_and=True,
     ) -> Crud[MODEL_TV]:
+        cls.schema
         return Crud(model=cls, fields=fields, database=database).where(
             *conditions, is_and=is_and, raw=raw
         )
