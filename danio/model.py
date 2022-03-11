@@ -701,13 +701,17 @@ class Model:
     async def refetch(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
+        fields: typing.Sequence[Field] = tuple(),
     ) -> MODEL_TV:
         new = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
-        ).fetch_one()
-        dataclasses.asdict
+        ).fetch_one(fields=fields)
+        db_fields = {f.model_name for f in fields} or {
+            f.model_name for f in self.schema.fields
+        }
         for f in dataclasses.fields(self):
-            setattr(self, f.name, getattr(new, f.name))
+            if f.name in db_fields:
+                setattr(self, f.name, getattr(new, f.name))
         return self
 
     async def get_or_create(

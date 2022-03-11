@@ -55,6 +55,7 @@ refetch instance data from database by primary key
 async def refetch(
     self: MODEL_TV,
     database: typing.Optional[Database] = None,
+    fields: typing.Sequence[Field] = tuple(),
 ) -> MODEL_TV:
 ```
 
