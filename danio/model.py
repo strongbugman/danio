@@ -1099,8 +1099,11 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     _for_update: bool = False
     _for_share: bool = False
 
-    async def fetch_all(self) -> typing.List[MODEL_TV]:
+    async def fetch_all(
+        self, fields: typing.Sequence[Field] = tuple()
+    ) -> typing.List[MODEL_TV]:
         assert self.model
+        self.fields = fields if fields else self.fields
         inses = self.model.load(
             await self.get_database(Operation.READ).fetch_all(
                 self.to_select_sql(), self._vars
@@ -1111,8 +1114,11 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
         return inses
 
-    async def fetch_one(self) -> typing.Optional[MODEL_TV]:
+    async def fetch_one(
+        self, fields: typing.Sequence[Field] = tuple()
+    ) -> typing.Optional[MODEL_TV]:
         assert self.model
+        self.fields = fields if fields else self.fields
         data = await self.get_database(Operation.READ).fetch_one(
             self.to_select_sql(), self._vars
         )
@@ -1123,7 +1129,10 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         else:
             return None
 
-    async def fetch_row(self) -> typing.List[typing.Mapping]:
+    async def fetch_row(
+        self, fields: typing.Sequence[Field] = tuple()
+    ) -> typing.List[typing.Mapping]:
+        self.fields = fields if fields else self.fields
         return await self.get_database(Operation.READ).fetch_all(
             self.to_select_sql(), self._vars
         )

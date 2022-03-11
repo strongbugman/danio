@@ -169,6 +169,13 @@ async def test_sql():
     # read
     u = (await User.where(User.id == u.id).fetch_all())[0]
     assert u.name == "admin_user2"
+    # read only special field
+    u = await User.where(fields=(User.name,)).fetch_one()
+    assert not u.id
+    assert u.name
+    u = await User.where().fetch_one(fields=(User.name,))
+    assert not u.id
+    assert u.name
     # refetch
     u = await User.where().fetch_one()
     await User.where(User.id == u.id).update(name="user1")

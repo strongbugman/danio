@@ -138,7 +138,7 @@ Except `fetch_all`, `fetch_one`, there are raw sql operation method(without mode
 
 * fetch_row - fetch row data from database
 
-    `async def fetch_row(self) -> typing.List[typing.Mapping]`
+    `async def fetch_row(self, fields: typing.Sequence[Field] = tuple()) -> typing.List[typing.Mapping]`
 
 * update - update data by condition without model layer
 
