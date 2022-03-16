@@ -558,9 +558,9 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = danio.field(field_cls=danio.IntField, auto_increment=True)
-
-        _table_primary_key: typing.ClassVar[danio.Field] = pk
+        pk: int = danio.field(
+            field_cls=danio.IntField, auto_increment=True, primary=True
+        )
 
     # db name
     @dataclasses.dataclass
