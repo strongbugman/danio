@@ -23,14 +23,15 @@ async def make_migration(
     """Make migration sql, compare model schema and database schema"""
     sqls = []
     down_sqls = []
-    sqls.append(f"USE `{db.url.database}`;")
+    if db.type == Database.Type.MYSQL:
+        sqls.append(f"USE `{db.url.database}`;")
     down_sqls.extend(sqls)
     for m in models:
         migration = m.schema - await Schema.from_db(db, m)
-        migration_sql = migration.to_sql()
+        migration_sql = migration.to_sql(type=db.type)
         if migration_sql:
             sqls.append(migration_sql)
-            down_sqls.append((~migration).to_sql())
+            down_sqls.append((~migration).to_sql(type=db.type))
     if len(sqls) == 1:
         logging.info("No migration detected")
         return ""

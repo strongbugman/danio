@@ -37,7 +37,7 @@ class MySQLBackend(mysql.MySQLBackend):
 
 
 class SQLiteConnection(sqlite.SQLiteConnection):
-    async def execute(self, query: mysql.ClauseElement) -> typing.Any:
+    async def execute(self, query: sqlite.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
             query, args, context = self._compile(query)
@@ -45,6 +45,7 @@ class SQLiteConnection(sqlite.SQLiteConnection):
                 await cursor.execute(query, args)
                 return cursor.lastrowid, cursor.rowcount
         except Exception as e:
+            # TODO
             # if pymysql and isinstance(e, pymysql.IntegrityError):
             #     raise exception.IntegrityError(str(e)) from e
             # else:

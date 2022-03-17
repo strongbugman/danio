@@ -8,3 +8,7 @@ class ValidateException(Exception):
 
 class IntegrityError(Exception):
     pass
+
+
+class OperationException(Exception):
+    pass
