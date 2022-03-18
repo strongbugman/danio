@@ -93,6 +93,9 @@ async def test_sql():
     await User.where().delete()
     assert not await User.where().fetch_count()
     # upset
+    if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.38":
+        # Upset test with 3.38+
+        return
     created, updated = await User.upsert(
         [
             dict(id=100, name="user", age=18, gender=1),
