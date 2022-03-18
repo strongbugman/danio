@@ -17,11 +17,11 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import reduce
 
-import pymysql
-from pymysql import converters
+import cached_property
+import sqlalchemy
 
+from . import exception
 from .database import Database
-from .exception import SchemaException, ValidateException
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
@@ -48,6 +48,7 @@ class Field:
     default: typing.Any = NoDefault  # for model layer
     describe: str = ""
     type: str = ""
+    primary: bool = False
     auto_increment: bool = False
     comment: str = ""
     enum: typing.Optional[typing.Type[enum.Enum]] = None
@@ -62,7 +63,6 @@ class Field:
     def __post_init__(self):
         # from schema sql
         if self.describe:
-            self.auto_increment = "AUTO_INCREMENT" in self.describe
             self.type = self.describe.split(" ")[1]
             tmp = self.COMMENT_PATTERN.findall(self.describe)
             if tmp:
@@ -70,8 +70,6 @@ class Field:
         # from model field
         if not self.describe and not self.type and self.TYPE:
             self.type = self.TYPE
-        if not self.describe and self.name and self.type:
-            self.describe = f"`{self.name}` {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
 
         if self.enum and not isinstance(self.default, self.enum):
             self.default = list(self.enum)[0]
@@ -130,9 +128,11 @@ class Field:
             expression, value
         )
 
-    def to_sql(self) -> str:
-        assert self.describe
-        return self.describe
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
+        if type == Database.Type.MYSQL:
+            return f"`{self.name}` {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
+        else:
+            return f"`{self.name}` {self.type} {'PRIMARY KEY ' if self.primary else ' '}{'AUTOINCREMENT ' if self.auto_increment else ' '}{'NOT NULL' if not self.primary else ''}"
 
     def to_python(self, value: typing.Any) -> typing.Any:
         """From databases raw to python"""
@@ -268,6 +268,7 @@ def field(
     name="",
     comment="",
     default=Field.FieldDefault,
+    primary=False,
     auto_increment=False,
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any:
@@ -279,6 +280,7 @@ def field(
         name=name,
         type=type,
         comment=comment,
+        primary=primary,
         auto_increment=auto_increment,
         enum=enum,
         **extras,
@@ -293,7 +295,7 @@ class Index:
 
     def __post_init__(self):
         if not self.name:
-            self.name = f"`{'_'.join(f.name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
+            self.name = f"{'_'.join(f.name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}"
 
     def __hash__(self):
         return hash((self.unique, tuple(f.name for f in self.fields)))
@@ -302,35 +304,41 @@ class Index:
         assert isinstance(other, Index)
         return self.__hash__() == other.__hash__()
 
-    def to_sql(self) -> str:
-        return (
-            f"{'UNIQUE ' if self.unique else ''}KEY "
-            f"{self.name}"
-            f"({', '.join(f'`{f.name}`' for f in self.fields)})"
-        )
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
+        if type == Database.Type.MYSQL:
+            return (
+                f"{'UNIQUE ' if self.unique else ''}KEY "
+                f"`{self.name}` "
+                f"({', '.join(f'`{f.name}`' for f in self.fields)})"
+            )
+        else:
+            return f"CREATE {'UNIQUE ' if self.unique else ' '}INDEX `{{table_name}}_{self.name}` on `{{table_name}}` ({', '.join(f'`{f.name}`' for f in self.fields)});"
 
 
 @dataclasses.dataclass
 class Schema:
-    POSTFIX: typing.ClassVar[
-        str
-    ] = "ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
     FIELD_NAME_PATTERN: typing.ClassVar[re.Pattern] = re.compile(r"`([^ ,]*)`")
 
     name: str
-    primary_field: Field = Field()
     indexes: typing.Set[Index] = dataclasses.field(default_factory=set)
     fields: typing.Set[Field] = dataclasses.field(default_factory=set)
     abstracted: bool = False
     model: typing.Optional[typing.Type[Model]] = None
 
+    @cached_property.cached_property
+    def primary_field(self) -> Field:
+        for f in self.fields:
+            if f.primary:
+                return f
+        raise exception.SchemaException("Primary field not found!")
+
     def __hash__(self):
         return hash(
             (
                 self.name,
-                tuple(f for f in sorted(self.fields, key=lambda f: f.name)),
+                tuple(f for f in sorted(self.fields, key=lambda f: f.__hash__())),
                 self.primary_field,
-                tuple(i for i in sorted(self.indexes, key=lambda f: f.name)),
+                tuple(i for i in sorted(self.indexes, key=lambda f: f.__hash__())),
             )
         )
 
@@ -367,17 +375,35 @@ class Schema:
             change_type_fields=change_type_fields,
         )
 
-    def to_sql(self) -> str:
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.primary_field
 
-        keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
-        keys.extend([index.to_sql() for index in self.indexes])
+        if type == Database.Type.MYSQL:
+            keys = [f"PRIMARY KEY (`{self.primary_field.name}`)"]
+            postfix = (
+                " ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+            )
+        else:
+            keys = []
+            postfix = ";"
 
-        return (
+        if type == Database.Type.MYSQL:
+            keys.extend([index.to_sql(type=type) for index in self.indexes])
+
+        sql = (
             f"CREATE TABLE `{self.name}` (\n"
-            + ",\n".join(itertools.chain((v.to_sql() for v in self.fields), keys))
-            + f"\n) {self.POSTFIX}"
+            + ",\n".join(
+                itertools.chain((v.to_sql(type=type) for v in self.fields), keys)
+            )
+            + f"\n){postfix}"
         )
+        if type == Database.Type.SQLITE:
+            _sqls = []
+            for index in self.indexes:
+                _sqls.append(index.to_sql(type=type).format(table_name=self.name))
+            sql += "\n".join(_sqls)
+
+        return sql
 
     @classmethod
     def from_model(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
@@ -391,7 +417,6 @@ class Schema:
                     f.default.name = f.name
                     f.default.__post_init__()
                 schema.fields.add(f.default)
-        schema.primary_field = m._table_primary_key
         fields = {f.model_name: f for f in schema.fields}
         # index
         for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):
@@ -404,7 +429,9 @@ class Schema:
                         elif isinstance(key, str) and key in fields:
                             _fields.append(fields[key])
                         else:
-                            raise SchemaException(f"Index: {keys} not supported")
+                            raise exception.SchemaException(
+                                f"Index: {keys} not supported"
+                            )
                     schema.indexes.add(Index(fields=_fields, unique=i == 1))
         return schema
 
@@ -414,46 +441,91 @@ class Schema:
     ) -> typing.Optional[SCHEMA_TV]:
         schema = cls(name=m.table_name, model=m)
         db_names = {f.name: f.model_name for f in m.schema.fields}
-        try:
-            for line in (await database.fetch_all(f"SHOW CREATE TABLE {m.table_name}"))[
-                0
-            ][1].split("\n")[1:-1]:
-                if "PRIMARY KEY" in line:
-                    db_name = cls.FIELD_NAME_PATTERN.findall(line)[0]
-                    for f in schema.fields:
-                        if db_name == f.name:
-                            schema.primary_field = f
-                            break
-                elif "KEY" in line:
-                    fields = {f.name: f for f in schema.fields}
-                    index_fields = []
-                    _names = cls.FIELD_NAME_PATTERN.findall(line)
-                    index_name = _names[0]
-                    index_fields = [fields[n] for n in _names[1:]]
-                    schema.indexes.add(
-                        Index(
-                            fields=index_fields,
-                            unique="UNIQUE" in line,
-                            name=index_name,
+        if database.type == Database.Type.MYSQL:
+            try:
+                for line in (
+                    await database.fetch_all(f"SHOW CREATE TABLE {m.table_name}")
+                )[0][1].split("\n")[1:-1]:
+                    if "PRIMARY KEY" in line:
+                        db_name = cls.FIELD_NAME_PATTERN.findall(line)[0]
+                        for f in schema.fields:
+                            if db_name == f.name:
+                                f.primary = True
+                                break
+                    elif "KEY" in line:
+                        fields = {f.name: f for f in schema.fields}
+                        index_fields = []
+                        _names = cls.FIELD_NAME_PATTERN.findall(line)
+                        index_name = _names[0]
+                        index_fields = [fields[n] for n in _names[1:]]
+                        schema.indexes.add(
+                            Index(
+                                fields=index_fields,
+                                unique="UNIQUE" in line,
+                                name=index_name,
+                            )
                         )
-                    )
-                else:
-                    db_name = cls.FIELD_NAME_PATTERN.findall(line)[0]
-                    if db_name in db_names:
-                        name = db_names[db_name]
                     else:
-                        name = ""
-                    schema.fields.add(
-                        Field(
-                            name=db_name,
-                            describe=line[2:].replace(",", ""),
-                            model_name=name,
+                        db_name = cls.FIELD_NAME_PATTERN.findall(line)[0]
+                        if db_name in db_names:
+                            name = db_names[db_name]
+                        else:
+                            name = ""
+                        schema.fields.add(
+                            Field(
+                                name=db_name,
+                                describe=line[2:].replace(",", ""),
+                                model_name=name,
+                                auto_increment="AUTO_INCREMENT" in line,
+                            )
                         )
-                    )
-        except Exception as e:
-            if "doesn't exist" in str(e):
-                return None
-            raise e
+            except Exception as e:
+                if "doesn't exist" in str(e):
+                    return None
+                raise e
+        else:
+            try:
+                for d in await database.fetch_all(
+                    f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
+                ):
+                    if d[0] == "table":
+                        for line in d[4].split("\n")[1:]:
+                            names = cls.FIELD_NAME_PATTERN.findall(line)
+                            if names:
+                                db_name = names[0]
+                                name = ""
+                                if db_name in db_names:
+                                    name = db_names[db_name]
+                                primary = False
+                                if "PRIMARY" in line:
+                                    primary = True
+                                auto_increment = False
+                                if "AUTOINCREMENT" in line:
+                                    auto_increment = True
+                                schema.fields.add(
+                                    Field(
+                                        name=db_name,
+                                        describe=line[line.find("`") :],
+                                        model_name=name,
+                                        primary=primary,
+                                        auto_increment=auto_increment,
+                                    )
+                                )
+                    elif d[0] == "index":
+                        fields = {f.name: f for f in schema.fields}
+                        _names = cls.FIELD_NAME_PATTERN.findall(d[4])
+                        index_fields = [fields[n] for n in _names[2:]]
+                        schema.indexes.add(
+                            Index(
+                                fields=index_fields,
+                                unique="UNIQUE" in d[4],
+                                name=d[1],
+                            )
+                        )
+            except Exception as e:
+                if "doesn't exist" in str(e):
+                    return None
+                raise e
 
         return schema
 
@@ -490,10 +562,10 @@ class Migration:
             drop_indexes=self.add_indexes,
         )
 
-    def to_sql(self) -> str:
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         sqls = []
         if self.schema and not self.old_schema:
-            sqls.append(self.schema.to_sql())
+            sqls.append(self.schema.to_sql(type=type))
         elif self.old_schema and not self.schema:
             sqls.append(f"DROP TABLE `{self.old_schema.name}`")
         elif self.schema and self.old_schema:
@@ -501,28 +573,40 @@ class Migration:
                 sqls.append(
                     f"ALTER TABLE `{self.old_schema.name}` RENAME `{self.schema.name}`"
                 )
+            for i in self.drop_indexes:
+                if type == Database.Type.MYSQL:
+                    if not set(i.fields) & set(self.drop_fields):
+                        sqls.append(
+                            f"ALTER TABLE `{self.schema.name}` DROP INDEX `{i.name}`"
+                        )
+                else:
+                    sqls.append(f"DROP INDEX `{i.name}`")
             for f in self.add_fields:
-                sqls.append(f"ALTER TABLE `{self.schema.name}` ADD COLUMN {f.to_sql()}")
+                sqls.append(
+                    f"ALTER TABLE `{self.schema.name}` ADD COLUMN {f.to_sql(type=type)}"
+                )
                 if not isinstance(f.default_value, f.NoDefault):
                     sqls[
                         -1
-                    ] += f" DEFAULT {converters.escape_item(f.to_database(f.default_value), None)}"
-                    sqls.append(
-                        f"ALTER TABLE `{self.schema.name}` ALTER COLUMN `{f.name}` DROP DEFAULT"
-                    )
+                    ] += f" DEFAULT {sqlalchemy.text(':df').bindparams(df=f.to_database(f.default_value)).compile(compile_kwargs={'literal_binds': True})}"
+                    if type == Database.Type.MYSQL:
+                        sqls.append(
+                            f"ALTER TABLE `{self.schema.name}` ALTER COLUMN `{f.name}` DROP DEFAULT"
+                        )
             for f in self.drop_fields:
                 sqls.append(f"ALTER TABLE `{self.schema.name}` DROP COLUMN `{f.name}`")
             for f in self.change_type_fields:
+                if type == type.SQLITE:
+                    raise exception.OperationException(
+                        "Type changing not allowed in SQLite"
+                    )
                 sqls.append(
                     f"ALTER TABLE `{self.schema.name}` MODIFY `{f.name}` {f.type}"
                 )
             for i in self.add_indexes:
                 sqls.append(
-                    f"CREATE {'UNIQUE ' if i.unique else ''}INDEX {i.name} on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
+                    f"CREATE {'UNIQUE ' if i.unique else ''}INDEX `{i.name}` on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
                 )
-            for i in self.drop_indexes:
-                if not set(i.fields) & set(self.drop_fields):
-                    sqls.append(f"ALTER TABLE `{self.schema.name}` DROP INDEX {i.name}")
         if sqls:
             sqls[-1] += ";"
 
@@ -539,10 +623,9 @@ class Operation(enum.IntEnum):
 
 @dataclasses.dataclass
 class Model:
-    id: int = field(field_cls=IntField, auto_increment=True, default=0)
+    id: int = field(IntField, primary=True, auto_increment=True)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
-    _table_primary_key: typing.ClassVar[typing.Any] = id
     _table_index_keys: typing.ClassVar[
         typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
     ] = tuple()
@@ -618,12 +701,14 @@ class Model:
                 if isinstance(value, enum.Enum):
                     value = value.value
                 if value not in set((c.value for c in f.enum)):
-                    raise ValidateException(
+                    raise exception.ValidateException(
                         f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
                     )
             # no default
             if isinstance(value, f.NoDefault):
-                raise ValidateException(f"{self.table_name}.{f.model_name} required!")
+                raise exception.ValidateException(
+                    f"{self.table_name}.{f.model_name} required!"
+                )
 
     def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
         """Dump dataclass to DB level dict"""
@@ -643,6 +728,11 @@ class Model:
         validate: bool = True,
     ):
         data = self.dump(fields=fields)
+        if (
+            self.schema.primary_field.name in data
+            and not data[self.schema.primary_field.name]
+        ):
+            data.pop(self.schema.primary_field.name)
         await self.before_create(validate=validate)
         setattr(
             self,
@@ -739,7 +829,7 @@ class Model:
                     database=database, fields=fields, validate=validate
                 )
                 created = True
-            except pymysql.IntegrityError as e:
+            except exception.IntegrityError as e:
                 where = self.__class__.where(
                     *conditions, database=database, fields=fields
                 )
@@ -759,6 +849,10 @@ class Model:
         update_fields: typing.Sequence[Field] = (),
         validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool, bool]:
+        """Try get_or_create then update.
+
+        For SQLite, updated will always be True.
+        """
         if not database:
             database = self.__class__.get_database(Operation.CREATE, self.table_name)
         if fields and self.schema.primary_field.name not in (f.name for f in fields):
@@ -827,15 +921,24 @@ class Model:
         update_fields: typing.Sequence[str] = (),
     ) -> typing.Tuple[bool, bool]:
         """
-        Using insert on duplicate: https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
+        Using insert on duplicate:
+          https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
+          https://www.sqlite.org/lang_upsert.html
+
+        For MySQL, rowcount=2 means the table has been updated
+        For SQLITE, rowcount!=0 will always be true
         """
-        _, rowcount = await Insert(
+        insert = Insert(
             model=cls,
             database=database,
             insert_data=insert_data,
             update_fields=update_fields,
-        ).exec()
-        return rowcount == 1, rowcount == 2
+        )
+        last_id, rowcount = await insert.exec()
+        if insert.get_database().type == Database.Type.MYSQL:
+            return rowcount == 1, rowcount == 2
+        else:
+            return last_id != 0, rowcount != 0
 
     @classmethod
     async def bulk_create(
@@ -849,15 +952,34 @@ class Model:
         for ins in instances:
             await ins.before_create(validate=validate)
 
+        if not database:
+            database = cls.get_database(Operation.CREATE, cls.table_name)
         data = [ins.dump(fields=fields) for ins in instances]
+        if database.type == Database.Type.SQLITE:
+            for d in data:
+                if (
+                    cls.schema.primary_field.name in d
+                    and not d[cls.schema.primary_field.name]
+                ):
+                    d.pop(cls.schema.primary_field.name)
+            if len({len(d) for d in data}) != 1:
+                raise exception.OperationException(
+                    "All instances either have primary key value or none for SQLite"
+                )
+
         next_ins_id = (
             await Insert(model=cls, database=database, insert_data=data).exec()
         )[0]
-
-        for ins in instances:
-            if not ins.primary:
-                setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
-            next_ins_id = ins.primary + 1
+        if database.type == Database.Type.MYSQL:
+            for ins in instances:
+                if not ins.primary:
+                    setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
+                next_ins_id = ins.primary + 1
+        else:
+            for ins in reversed(instances):
+                if not ins.primary:
+                    setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
+                next_ins_id = ins.primary - 1
 
         for ins in instances:
             await ins.after_create()
@@ -950,17 +1072,19 @@ class SQLMarker:
         self._var_index = other._var_index
         return self
 
-    def _parse(self, value: typing.Any) -> str:
+    def _parse(
+        self, value: typing.Any, type: Database.Type = Database.Type.MYSQL
+    ) -> str:
         if isinstance(value, Field):
             return value.name
         elif isinstance(value, SQLMarker):
-            return value.sync(self).to_sql()
+            return value.sync(self).to_sql(type=type)
         elif self.field:
             return f":{self.mark(self.field.to_database(value))}"
         else:
             return f":{self.mark(value)}"
 
-    def to_sql(self) -> str:
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         """For _parse method"""
 
 
@@ -1034,17 +1158,17 @@ class SQLExpression(SQLMarker):
         self.values.append((self.Operator.OR, other))
         return self
 
-    def to_sql(self):
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.field
 
         sql = f"`{self.field.name}`"
         for op, value in self.values:
             if op == self.Operator.IN:
-                sql += f" {op.value} ({', '.join(self._parse(v) for v in value)})"
+                sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
             elif isinstance(value, SQLExpression):
-                sql = f"({sql}) {op.value} ({self._parse(value)})"
+                sql = f"({sql}) {op.value} ({self._parse(value, type=type)})"
             else:
-                sql += f" {op.value} {self._parse(value)}"
+                sql += f" {op.value} {self._parse(value, type=type)}"
         return sql
 
 
@@ -1059,13 +1183,15 @@ class SQLCase(SQLMarker):
         self.cases.append((expression, value))
         return self
 
-    def to_sql(self) -> str:
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.cases
 
         sql = "CASE"
         for ex, v in self.cases:
-            sql += f" WHEN {self._parse(ex)} THEN {self._parse(v)}"
-        sql += f" ELSE {self._parse(self.default)} END"
+            sql += (
+                f" WHEN {self._parse(ex, type=type)} THEN {self._parse(v, type=type)}"
+            )
+        sql += f" ELSE {self._parse(self.default, type=type)} END"
 
         return sql
 
@@ -1108,23 +1234,23 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     ) -> typing.List[MODEL_TV]:
         assert self.model
         self.fields = fields if fields else self.fields
-        inses = self.model.load(
-            await self.get_database(Operation.READ).fetch_all(
-                self.to_select_sql(), self._vars
-            )
+        database = self.get_database(Operation.READ)
+        instances = self.model.load(
+            await database.fetch_all(self.to_select_sql(type=database.type), self._vars)
         )
-        for ins in inses:
+        for ins in instances:
             await ins.after_read()
 
-        return inses
+        return instances
 
     async def fetch_one(
         self, fields: typing.Sequence[Field] = tuple()
     ) -> typing.Optional[MODEL_TV]:
         assert self.model
         self.fields = fields if fields else self.fields
-        data = await self.get_database(Operation.READ).fetch_one(
-            self.to_select_sql(), self._vars
+        database = self.get_database(Operation.READ)
+        data = await database.fetch_one(
+            self.to_select_sql(type=database.type), self._vars
         )
         if data:
             ins = self.model.load([data])[0]
@@ -1137,28 +1263,30 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         self, fields: typing.Sequence[Field] = tuple()
     ) -> typing.List[typing.Mapping]:
         self.fields = fields if fields else self.fields
-        return await self.get_database(Operation.READ).fetch_all(
-            self.to_select_sql(), self._vars
+        database = self.get_database(Operation.READ)
+        return await database.fetch_all(
+            self.to_select_sql(type=database.type), self._vars
         )
 
     async def fetch_count(self) -> int:
-        data = await self.get_database(Operation.READ).fetch_one(
-            self.to_select_sql(count=True), self._vars
+        database = self.get_database(Operation.READ)
+        data = await database.fetch_one(
+            self.to_select_sql(count=True, type=database.type), self._vars
         )
         assert data
         return data[0]
 
     async def delete(self) -> int:
+        database = self.get_database(Operation.DELETE)
         return (
-            await self.get_database(Operation.DELETE).execute(
-                self.to_delete_sql(), self._vars
-            )
+            await database.execute(self.to_delete_sql(type=database.type), self._vars)
         )[1]
 
     async def update(self, **data) -> int:
+        database = self.get_database(Operation.UPDATE)
         return (
-            await self.get_database(Operation.UPDATE).execute(
-                self.to_update_sql(data), self._vars
+            await database.execute(
+                self.to_update_sql(data, type=database.type), self._vars
             )
         )[1]
 
@@ -1200,14 +1328,16 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         self._for_share = True
         return self
 
-    def to_select_sql(self, count=False) -> str:
+    def to_select_sql(
+        self, count=False, type: Database.Type = Database.Type.MYSQL
+    ) -> str:
         assert self.model
         if not count:
             sql = f"SELECT {', '.join(f'`{f.name}`' for f in self.fields or self.model.schema.fields)} FROM `{self.model.table_name}`"
         else:
             sql = f"SELECT COUNT(*) FROM `{self.model.table_name}`"
         if self._where:
-            sql += f" WHERE {self._where.sync(self).to_sql()}"
+            sql += f" WHERE {self._where.sync(self).to_sql(type=type)}"
         elif self._raw_where:
             sql += f" WHERE {self._raw_where}"
         if not count:
@@ -1215,38 +1345,42 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 if isinstance(self._order_by, Field):
                     sql += f" ORDER BY `{self._order_by.name}` {'ASC' if self._order_by_asc else 'DESC'}"
                 elif isinstance(self._order_by, SQLExpression):
-                    sql += f" ORDER BY {self._order_by.sync(self).to_sql()} {'ASC' if self._order_by_asc else 'DESC'}"
+                    sql += f" ORDER BY {self._order_by.sync(self).to_sql(type=type)} {'ASC' if self._order_by_asc else 'DESC'}"
             if self._limit:
                 sql += f" LIMIT :{self.mark(self._limit)}"
             if self._offset:
                 assert self._limit, "Offset need limit"
                 sql += f" OFFSET :{self.mark(self._offset)}"
-            if self._for_update:
+            if self._for_update and type != Database.Type.SQLITE:
                 sql += " FOR UPDATE"
-            elif self._for_share:
+            elif self._for_share and type != Database.Type.SQLITE:
                 sql += " LOCK IN SHARE MODE"
 
         return sql + ";"
 
-    def to_delete_sql(self):
+    def to_delete_sql(self, type: Database.Type = Database.Type.MYSQL):
         assert self.model
         sql = f"DELETE from `{self.model.table_name}`"
         if self._where:
-            sql += f" WHERE {self._where.sync(self).to_sql()}"
+            sql += f" WHERE {self._where.sync(self).to_sql(type=type)}"
         return sql + ";"
 
-    def to_update_sql(self, data: typing.Dict[str, typing.Any]):
+    def to_update_sql(
+        self,
+        data: typing.Dict[str, typing.Any],
+        type: Database.Type = Database.Type.MYSQL,
+    ):
         assert self.model
         fields = {f.model_name: f for f in self.model.schema.fields}
         _sqls = []
         for k, v in data.items():
             if isinstance(v, SQLMarker):
-                _sqls.append(f"`{k}` = {v.sync(self).to_sql()}")
+                _sqls.append(f"`{k}` = {v.sync(self).to_sql(type=type)}")
             else:
                 _sqls.append(f"`{k}` = :{self.mark(fields[k].to_database(v))}")
         sql = f"UPDATE `{self.model.table_name}` SET {', '.join(_sqls)}"
         if self._where:
-            sql += f" WHERE {self._where.sync(self).to_sql()}"
+            sql += f" WHERE {self._where.sync(self).to_sql(type=type)}"
         return sql + ";"
 
 
@@ -1259,10 +1393,12 @@ class Insert(BaseSQLBuilder):
     update_fields: typing.Sequence[str] = dataclasses.field(default_factory=list)
 
     async def exec(self) -> typing.Tuple[int, int]:
-        return await self.get_database().execute(self.to_sql(), self._vars)
+        database = self.get_database()
+        return await database.execute(self.to_sql(type=database.type), self._vars)
 
-    def to_sql(self):
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.insert_data
+        assert self.model
 
         keys = list(self.insert_data[0].keys())
         vars = []
@@ -1275,12 +1411,20 @@ class Insert(BaseSQLBuilder):
         insert_value_sql = []
         for vs in vars:
             insert_value_sql.append(f"({', '.join(':' + v for v in vs)})")
-        update_value_sql = []
-        for d in self.update_fields:
-            update_value_sql.append(f"{d} = VALUES({d})")
         sql = sql + ", ".join(insert_value_sql)
-        if update_value_sql:
-            sql += " ON DUPLICATE KEY UPDATE " + ", ".join(update_value_sql)
+        # upsert
+        if self.update_fields:
+            update_value_sql = []
+            _sql = ""
+            if type == Database.Type.MYSQL:
+                _sql = " ON DUPLICATE KEY UPDATE "
+                for k in self.update_fields:
+                    update_value_sql.append(f"{k} = VALUES({k})")
+            elif type == Database.Type.SQLITE:
+                _sql = " ON CONFLICT DO UPDATE SET "
+                for k in self.update_fields:
+                    update_value_sql.append(f"{k} = excluded.{k}")
+            sql += _sql + ", ".join(update_value_sql)
         return sql + ";"
 
 
@@ -1291,14 +1435,16 @@ class CaseUpdate(BaseSQLBuilder):
 
     async def exec(self) -> int:
         database = self.get_database()
-        await database.execute(self.to_sql(), self._vars)
+        await database.execute(self.to_sql(type=database.type), self._vars)
         return 1
 
-    def to_sql(self):
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL):
         assert self.data
         assert self.model
 
-        parse_data = defaultdict(dict)
+        parse_data: typing.DefaultDict[str, typing.Dict[str, typing.Any]] = defaultdict(
+            dict
+        )
         primary_values = []
         for d in self.data:
             for k, v in d.items():
@@ -1312,8 +1458,8 @@ class CaseUpdate(BaseSQLBuilder):
             case = SQLCase()
             for pv, v in vs.items():
                 case.case(self.model.schema.primary_field == pv, v)
-            _sqls.append(f" `{k}` = {case.sync(self).to_sql()}")
+            _sqls.append(f" `{k}` = {case.sync(self).to_sql(type=type)}")
         sql += ", ".join(_sqls)
-        sql += f" WHERE {(self.model.schema.primary_field.contains(primary_values)).sync(self).to_sql()};"
+        sql += f" WHERE {(self.model.schema.primary_field.contains(primary_values)).sync(self).to_sql(type=type)};"
 
         return sql

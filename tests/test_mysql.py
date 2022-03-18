@@ -52,7 +52,9 @@ class User(danio.Model):
         field_cls=danio.DateTimeField,
         comment="when created",
     )
-    gender: Gender = danio.field(field_cls=danio.IntField, enum=Gender)
+    gender: Gender = danio.field(
+        field_cls=danio.IntField, enum=Gender, default=Gender.MALE
+    )
 
     async def before_create(self, **kwargs):
         global user_count
@@ -558,9 +560,9 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = danio.field(field_cls=danio.IntField, auto_increment=True)
-
-        _table_primary_key: typing.ClassVar[danio.Field] = pk
+        pk: int = danio.field(
+            field_cls=danio.IntField, auto_increment=True, primary=True
+        )
 
     # db name
     @dataclasses.dataclass

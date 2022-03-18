@@ -4,3 +4,11 @@ class SchemaException(Exception):
 
 class ValidateException(Exception):
     pass
+
+
+class IntegrityError(Exception):
+    pass
+
+
+class OperationException(Exception):
+    pass

@@ -13,6 +13,7 @@ def field(
     name="",
     comment="",
     default=Field.FieldDefault,
+    primary=False,
     auto_increment=False,
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any
@@ -25,6 +26,7 @@ import danio
 
 @dataclasses.dataclass
 class Cat(danio.Model):
+    id: int = danio.field(IntField, primary=True, auto_increment=True)
     name: str = danio.field(danio.CharField, comment="cat name")
     age: int = danio.field(danio.IntField)
 ```
@@ -78,7 +80,6 @@ class UserProfile(danio.Model):
     user_id: int = danio.field(danio.IntField)
     level: int = danio.field(danio.IntField)
 
-    _table_primary_key: typing.ClassVar[typing.Any] = danio.Model.id
     _table_index_keys: typing.ClassVar[
         typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
     ] = ((level, user_id,),)
@@ -91,7 +92,6 @@ There are the corresponding database table schema:
 
 ```sql
 ...
-PRIMARY KEY (`id`),
 UNIQUE KEY `user_id_471_uiq` (`user_id`),
 KEY `level_user_id_231_idx` (`level`, `user_id`)
 ...
