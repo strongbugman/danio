@@ -301,6 +301,9 @@ async def test_schema():
 
 @pytest.mark.asyncio
 async def test_migrate():
+    if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.35":
+        # Migrate support with 3.35+
+        return
     @dataclasses.dataclass
     class UserProfile(User):
         user_id: int = danio.field(field_cls=danio.IntField, type="INTEGER")

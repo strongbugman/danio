@@ -30,12 +30,6 @@ jobs:
         pip install poetry
         poetry config virtualenvs.create false --local
         poetry install
-        wget https://www.sqlite.org/2022/sqlite-autoconf-3380100.tar.gz
-        tar -xvf sqlite-autoconf-3380100.tar.gz 
-        cd sqlite-autoconf-3380100
-        ./configure
-        make
-        make install
     - name: Set up MySQL
       run: |
         sudo /etc/init.d/mysql start
