@@ -623,7 +623,7 @@ class Operation(enum.IntEnum):
 
 @dataclasses.dataclass
 class Model:
-    id: int = field(IntField, primary=True, auto_increment=True, default=0)
+    id: int = field(IntField, primary=True, auto_increment=True)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
     _table_index_keys: typing.ClassVar[
@@ -925,7 +925,7 @@ class Model:
           https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
           https://www.sqlite.org/lang_upsert.html
 
-        For MySQL, rowcount=2 means the table has been updated:
+        For MySQL, rowcount=2 means the table has been updated
         For SQLITE, rowcount!=0 will always be true
         """
         insert = Insert(
@@ -1412,7 +1412,7 @@ class Insert(BaseSQLBuilder):
         for vs in vars:
             insert_value_sql.append(f"({', '.join(':' + v for v in vs)})")
         sql = sql + ", ".join(insert_value_sql)
-        # upset
+        # upsert
         if self.update_fields:
             update_value_sql = []
             _sql = ""

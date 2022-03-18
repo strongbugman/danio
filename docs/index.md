@@ -23,6 +23,7 @@ Danio is a ORM for python asyncio world.It is designed to make getting easy and 
 * signals like before save, after save and so on
 * complex operation like bulk create, upsert, create or update and so on
 * assist model schema migration
+* Support MySQL/SQLite
 
 ## install
 
@@ -124,4 +125,4 @@ user, created, updated = await User(id=2, name="updated?").create_or_update(
 
 ## TODO
 
-* SQLite/PostgresSQL support
+* PostgresSQL support

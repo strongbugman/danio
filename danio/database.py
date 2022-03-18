@@ -6,6 +6,11 @@ try:
 except ImportError:
     pymysql = None  # type: ignore
 
+try:
+    import aiosqlite
+except ImportError:
+    aiosqlite = None  # type: ignore
+
 
 from databases import Database as _Database
 from databases.backends import mysql, sqlite
@@ -45,11 +50,10 @@ class SQLiteConnection(sqlite.SQLiteConnection):
                 await cursor.execute(query, args)
                 return cursor.lastrowid, cursor.rowcount
         except Exception as e:
-            # TODO
-            # if pymysql and isinstance(e, pymysql.IntegrityError):
-            #     raise exception.IntegrityError(str(e)) from e
-            # else:
-            raise e
+            if aiosqlite and isinstance(e, aiosqlite.IntegrityError):
+                raise exception.IntegrityError(str(e)) from e
+            else:
+                raise e
 
 
 class SQLiteBackend(sqlite.SQLiteBackend):
