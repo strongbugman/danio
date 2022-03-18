@@ -328,11 +328,13 @@ async def test_migrate():
                 "CREATE  INDEX `userprofile_group_id_6969_idx`  on `userprofile` (`group_id`);"
                 "CREATE  INDEX `userprofile_user_id_6969_idx`  on `userprofile` (`user_id`);"
                 "DROP INDEX userprofile_level_11_idx;"
+                "ALTER TABLE userprofile DROP COLUMN level;"
             )
     # make migration
     old_schema = await danio.Schema.from_db(db, UserProfile)
     migration: danio.Migration = UserProfile.schema - old_schema
-    assert len(migration.add_fields) == 0
+    assert len(migration.add_fields) == 1
+    assert migration.add_fields[0].name == "level"
     assert len(migration.drop_fields) == 1
     assert migration.drop_fields[0].name == "group_id"
     assert len(migration.add_indexes) == 1
