@@ -295,7 +295,7 @@ class Index:
 
     def __post_init__(self):
         if not self.name:
-            self.name = f"`{'_'.join(f.name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}` "
+            self.name = f"{'_'.join(f.name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}"
 
     def __hash__(self):
         return hash((self.unique, tuple(f.name for f in self.fields)))
@@ -308,11 +308,11 @@ class Index:
         if type == Database.Type.MYSQL:
             return (
                 f"{'UNIQUE ' if self.unique else ''}KEY "
-                f"{self.name}"
+                f"`{self.name}` "
                 f"({', '.join(f'`{f.name}`' for f in self.fields)})"
             )
         else:
-            return f"CREATE {'UNIQUE ' if self.unique else ' '}INDEX {self.name} on {{table_name}} ({', '.join(f'`{f.name}`' for f in self.fields)});"
+            return f"CREATE {'UNIQUE ' if self.unique else ' '}INDEX `{{table_name}}_{self.name}` on `{{table_name}}` ({', '.join(f'`{f.name}`' for f in self.fields)});"
 
 
 @dataclasses.dataclass
@@ -514,7 +514,7 @@ class Schema:
                     elif d[0] == "index":
                         fields = {f.name: f for f in schema.fields}
                         _names = cls.FIELD_NAME_PATTERN.findall(d[4])
-                        index_fields = [fields[n] for n in _names[1:]]
+                        index_fields = [fields[n] for n in _names[2:]]
                         schema.indexes.add(
                             Index(
                                 fields=index_fields,
@@ -577,10 +577,10 @@ class Migration:
                 if type == Database.Type.MYSQL:
                     if not set(i.fields) & set(self.drop_fields):
                         sqls.append(
-                            f"ALTER TABLE `{self.schema.name}` DROP INDEX {i.name}"
+                            f"ALTER TABLE `{self.schema.name}` DROP INDEX `{i.name}`"
                         )
                 else:
-                    sqls.append(f"DROP INDEX {i.name}")
+                    sqls.append(f"DROP INDEX `{i.name}`")
             for f in self.add_fields:
                 sqls.append(
                     f"ALTER TABLE `{self.schema.name}` ADD COLUMN {f.to_sql(type=type)}"
@@ -605,7 +605,7 @@ class Migration:
                 )
             for i in self.add_indexes:
                 sqls.append(
-                    f"CREATE {'UNIQUE ' if i.unique else ''}INDEX {i.name} on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
+                    f"CREATE {'UNIQUE ' if i.unique else ''}INDEX `{i.name}` on `{self.schema.name}` ({','.join('`' + f.name + '`' for f in i.fields)})"
                 )
         if sqls:
             sqls[-1] += ";"

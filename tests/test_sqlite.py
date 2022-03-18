@@ -318,17 +318,17 @@ async def test_migrate():
 
     for idx in UserProfile.schema.indexes:
         if idx.fields[0].name == "level":
-            idx.name = "level_idx"
+            idx.name = "level_11_idx"
 
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript(UserProfile.schema.to_sql(type=db.type))
             await cursor.executescript(
                 "ALTER TABLE userprofile ADD COLUMN `group_id` INTEGER NOT NULL DEFAULT 0;"
-                "DROP INDEX level_idx;"
+                "DROP INDEX userprofile_level_11_idx;"
                 "ALTER TABLE userprofile DROP COLUMN level;"
-                "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
-                "CREATE  INDEX `user_id_6969_idx`  on userprofile (`user_id`);"
+                "CREATE  INDEX `userprofile_group_id_6969_idx`  on `userprofile` (`group_id`);"
+                "CREATE  INDEX `userprofile_user_id_6969_idx`  on `userprofile` (`user_id`);"
             )
     # make migration
     old_schema = await danio.Schema.from_db(db, UserProfile)
