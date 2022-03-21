@@ -1,7 +1,6 @@
 import asyncio
 import dataclasses
 import datetime
-import decimal
 import enum
 import glob
 import os
@@ -11,21 +10,19 @@ import pytest
 
 import danio
 
+db_name = "test_danio"
 db = danio.Database(
-    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'mysql')}:3306/",
-    maxsize=2,
-    charset="utf8mb4",
-    use_unicode=True,
-    connect_timeout=60,
+    f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    min_size=1,
+    max_size=3,
+    max_inactive_connection_lifetime=60,
 )
 read_db = danio.Database(
-    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'mysql')}:3306/",
-    maxsize=2,
-    charset="utf8mb4",
-    use_unicode=True,
-    connect_timeout=60,
+    f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    min_size=1,
+    max_size=3,
+    max_inactive_connection_lifetime=60,
 )
-db_name = "test_danio"
 
 
 user_count = 0
@@ -38,6 +35,7 @@ class User(danio.Model):
         FEMALE = 1
         OTHER = 2
 
+    id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
     name: str = danio.field(
         danio.CharField,
         comment="User name",
@@ -46,10 +44,12 @@ class User(danio.Model):
     age: int = danio.field(danio.IntField)
     created_at: datetime.datetime = danio.field(
         danio.DateTimeField,
+        type="timestamp without time zone",
         comment="when created",
     )
     updated_at: datetime.datetime = danio.field(
         danio.DateTimeField,
+        type="timestamp without time zone",
         comment="when created",
     )
     gender: Gender = danio.field(danio.IntField, enum=Gender, default=Gender.MALE)
@@ -79,29 +79,35 @@ class User(danio.Model):
 
 @pytest.fixture(autouse=True)
 async def database():
-    await db.connect()
-    await read_db.connect()
+    _db = danio.Database(
+        f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/",
+        min_size=1,
+        max_size=3,
+        max_inactive_connection_lifetime=60,
+    )
+    await _db.connect()
     if not os.path.exists(os.path.join("tests", "migrations")):
         os.mkdir(os.path.join("tests", "migrations"))
     try:
-        await db.execute(
-            f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+        await _db.execute(
+            f"CREATE DATABASE {db_name};",
         )
-        await db.execute(f"USE `{db_name}`;")
-        await db.execute(danio.Schema.from_model(User).to_sql())
-        await read_db.execute(f"USE `{db_name}`;")
+        await db.connect()
+        await read_db.connect()
+        await db.execute(danio.Schema.from_model(User).to_sql(type=db.type))
         yield db
     finally:
-        await db.execute(f"DROP DATABASE {db_name};")
         await db.disconnect()
         await read_db.disconnect()
+        await _db.execute(f"DROP DATABASE {db_name};")
+        await _db.disconnect()
         for f in glob.glob("./tests/migrations/*.sql"):
             os.remove(f)
 
 
 @pytest.mark.asyncio
 async def test_database():
-    results = await db.fetch_all("SHOW DATABASES;")
+    results = await db.fetch_all("SELECT datname FROM pg_database;")
     assert results
 
 
@@ -165,7 +171,7 @@ async def test_sql():
     await u.save()
     assert u.name == "admin_user"
     await User.where(User.id == u.id).update(name=User.name.to_database("admin_user2"))
-    assert (await User.where().fetch_one()).name == "admin_user2"
+    assert (await User.where(User.id == u.id).fetch_one()).name == "admin_user2"
     # read
     u = (await User.where(User.id == u.id).fetch_all())[0]
     assert u.name == "admin_user2"
@@ -182,7 +188,7 @@ async def test_sql():
     await u.refetch()
     assert u.name == "user1"
     # delete
-    await u.delete()
+    assert await u.delete()
     assert not await User.where(User.id == u.id).fetch_all()
     u = await User.where().fetch_one()
     await User.where(User.id == u.id).delete()
@@ -235,6 +241,7 @@ async def test_sql():
 
     @dataclasses.dataclass
     class UserProfile(danio.Model):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(danio.IntField)
         level: int = danio.field(danio.IntField)
 
@@ -249,23 +256,17 @@ async def test_sql():
             else:
                 return db
 
-    await db.execute(UserProfile.schema.to_sql())
+    for sql in UserProfile.schema.to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     created, updated = await UserProfile.upsert(
         [
             dict(user_id=1, level=10),
         ],
         update_fields=["level"],
+        conflict_targets=("user_id",),
     )
     assert created
-    assert not updated
-    # --
-    created, updated = await UserProfile.upsert(
-        [
-            dict(user_id=1, level=11),
-        ],
-        update_fields=["level"],
-    )
-    assert not created
     assert updated
     # --
     created, updated = await UserProfile.upsert(
@@ -273,9 +274,10 @@ async def test_sql():
             dict(user_id=1, level=11),
         ],
         update_fields=["level"],
+        conflict_targets=("user_id",),
     )
-    assert not created
-    assert not updated
+    assert created
+    assert updated
 
 
 @pytest.mark.asyncio
@@ -331,96 +333,6 @@ async def test_complicated_update():
 
 
 @pytest.mark.asyncio
-async def test_field():
-    @dataclasses.dataclass
-    class Table(danio.Model):
-        fsint: int = danio.field(field_cls=danio.SmallIntField)
-        fint: int = danio.field(field_cls=danio.IntField)
-        fbint: int = danio.field(field_cls=danio.BigIntField)
-        ftint: int = danio.field(field_cls=danio.TinyIntField)
-        fbool: int = danio.field(field_cls=danio.BoolField)
-        ffloat: int = danio.field(field_cls=danio.FLoatField)
-        fdecimal: decimal.Decimal = danio.field(field_cls=danio.DecimalField)
-        fchar: str = danio.field(field_cls=danio.CharField)
-        ftext: str = danio.field(field_cls=danio.TextField)
-        ftime: datetime.timedelta = danio.field(field_cls=danio.TimeField)
-        fdate: datetime.date = danio.field(field_cls=danio.DateField)
-        fdatetime: datetime.datetime = danio.field(field_cls=danio.DateTimeField)
-        fjson1: typing.List[int] = danio.field(field_cls=danio.JsonField, default=[])
-        fjson2: typing.Dict[str, int] = danio.field(
-            field_cls=danio.JsonField, default=dict
-        )
-
-        @classmethod
-        def get_database(cls, *args, **kwargs) -> danio.Database:
-            return db
-
-    await db.execute(Table.schema.to_sql())
-    # create
-    t = Table()
-    assert t.fsint == 0
-    assert t.fbint == 0
-    assert t.fint == 0
-    assert t.ftint == 0
-    assert not t.fbool
-    assert t.ffloat == 0
-    assert t.fchar == ""
-    assert t.ftext == ""
-    assert t.ftime == datetime.timedelta(0)
-    assert t.fdate
-    assert t.fdatetime
-    assert t.fjson1 == []
-    assert t.fjson2 == {}
-    await t.save()
-    # read
-    t = await Table.where().fetch_one()
-    assert t.fint == 0
-    assert t.ftint == 0
-    assert not t.fbool
-    assert t.ffloat == 0
-    assert t.fdecimal == decimal.Decimal()
-    assert t.fchar == ""
-    assert t.ftext == ""
-    assert t.ftime == datetime.timedelta(0)
-    assert t.fdate
-    assert t.fdatetime
-    assert t.fjson1 == []
-    assert t.fjson2 == {}
-    # update
-    t.fint = 1
-    t.fsint = 1
-    t.fbint = 1
-    t.ftint = 1
-    t.fbool = True
-    t.ffloat = 2.123456
-    t.fdecimal = decimal.Decimal("2.12")
-    t.fchar = "hello"
-    t.ftext = "long story"
-    t.ftime = datetime.timedelta(hours=11, seconds=11)
-    t.fdate = datetime.date.fromtimestamp(24 * 60 * 60)
-    t.fdatetime = datetime.datetime.fromtimestamp(24 * 60 * 60)
-    t.fjson1.extend([1, 2, 3])
-    t.fjson2.update(x=3, y=4, z=5)
-    await t.save()
-    # read
-    t = await Table.where().fetch_one()
-    assert t.fint == 1
-    assert t.fsint == 1
-    assert t.fbint == 1
-    assert t.ftint == 1
-    assert t.fbool
-    assert t.ffloat == 2.12346
-    assert t.fdecimal == decimal.Decimal("2.12")
-    assert t.fchar == "hello"
-    assert t.ftext == "long story"
-    assert str(t.ftime) == "11:00:11"
-    assert t.fdate == datetime.date.fromtimestamp(24 * 60 * 60)
-    assert t.fdatetime == datetime.datetime.fromtimestamp(24 * 60 * 60)
-    assert t.fjson1 == [1, 2, 3]
-    assert t.fjson2 == {"x": 3, "y": 4, "z": 5}
-
-
-@pytest.mark.asyncio
 async def test_bulk_operations():
     # create
     users = await User.bulk_create([User(name=f"user_{i}") for i in range(10)])
@@ -430,12 +342,6 @@ async def test_bulk_operations():
     users = await User.bulk_create([User(name=f"user_{i}") for i in range(10)])
     for i, u in enumerate(users):
         assert u.id == i + 1 + 10
-    # with special id
-    users = [User(name=f"user_100_{i}") for i in range(10)]
-    users[1].id = 34
-    await User.bulk_create(users)
-    assert users[1].id == 34
-    assert users[9].id == 42
     # update
     users = await User.where().fetch_all()
     for user in users:
@@ -461,6 +367,7 @@ async def test_bulk_operations():
 async def test_combo_operations():
     @dataclasses.dataclass
     class UserProfile(danio.Model):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(danio.IntField)
         level: int = danio.field(danio.IntField)
 
@@ -475,7 +382,9 @@ async def test_combo_operations():
             else:
                 return db
 
-    await db.execute(UserProfile.schema.to_sql())
+    for sql in UserProfile.schema.to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     # get or create
     up, created = await UserProfile(user_id=1, level=10).get_or_create(
         key_fields=(UserProfile.user_id,)
@@ -509,20 +418,21 @@ async def test_combo_operations():
     )
     assert up.id
     assert not created
-    assert not updated
+    assert updated
     # --
     up, created, updated = await UserProfile(user_id=2, level=12).create_or_update(
         key_fields=(UserProfile.user_id,), update_fields=(UserProfile.user_id,)
     )
     assert up.id
     assert not created
-    assert not updated
+    assert updated
 
 
 @pytest.mark.asyncio
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(field_cls=danio.IntField, comment="user id")
         level: int = danio.field(field_cls=danio.IntField, comment="user level")
         coins: int = danio.field(field_cls=danio.IntField, comment="user coins")
@@ -537,10 +447,17 @@ async def test_schema():
         )
 
     assert danio.Schema.from_model(UserProfile) == UserProfile.schema
-    await db.execute(UserProfile.schema.to_sql())
+    for sql in UserProfile.schema.to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     assert not (await UserProfile.where().fetch_all())
     assert (
-        len(await db.fetch_all(f"SHOW INDEX FROM {UserProfile.get_table_name()}")) == 5
+        len(
+            await db.fetch_all(
+                f"SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '{UserProfile.get_table_name()}';"
+            )
+        )
+        == 4
     )
     # abstract class
 
@@ -552,34 +469,40 @@ async def test_schema():
         _table_abstracted: typing.ClassVar[bool] = True
 
     assert BaseUserBackpack.schema.abstracted
-    assert BaseUserBackpack.schema.to_sql()
+    assert BaseUserBackpack.schema.to_sql(type=db.type)
     # disable fields
 
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = danio.field(
-            field_cls=danio.IntField, auto_increment=True, primary=True
-        )
+        pk: int = danio.field(field_cls=danio.IntField, type="serial", primary=True)
 
     # db name
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
         weight: int = danio.field(field_cls=danio.IntField)
 
-    sql = UserBackpack2.schema.to_sql()
+    sql = UserBackpack2.schema.to_sql(type=db.type)
     assert "user_id2" in sql
     assert "weight" in sql
-    await db.execute(UserBackpack2.schema.to_sql())
+    for sql in UserBackpack2.schema.to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     # from db
-    assert UserBackpack2.schema == await danio.Schema.from_db(db, UserBackpack2)
+    m = UserBackpack2.schema - await danio.Schema.from_db(db, UserBackpack2)
+    assert not m.add_fields
+    assert not m.drop_fields
+    assert not m.drop_indexes
+    assert not m.add_indexes
     assert await danio.Schema.from_db(db, UserProfile)
     assert not await danio.Schema.from_db(db, UserBackpack)
     # wrong index
 
     @dataclasses.dataclass
     class UserBackpack3(BaseUserBackpack):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
         weight: int = danio.field(field_cls=danio.IntField)
 
@@ -593,6 +516,7 @@ async def test_schema():
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(field_cls=danio.IntField)
         level: int = danio.field(field_cls=danio.IntField, default=1)
         coins: int = danio.field(field_cls=danio.IntField)
@@ -606,14 +530,17 @@ async def test_migrate():
             ("level",),
         )
 
-    await db.execute((UserProfile.schema - None).to_sql())
-    await db.execute(
-        "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
+    sqls = (UserProfile.schema - None).to_sql(type=db.type)
+    sqls += (
+        'ALTER TABLE userprofile ADD COLUMN "group_id" int NOT NULL;'
         "ALTER TABLE userprofile DROP COLUMN level;"
-        "ALTER TABLE userprofile MODIFY user_id bigint(10);"
-        "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
-        "CREATE  INDEX `user_id_6969_idx`  on userprofile (`user_id`);"
+        "ALTER TABLE userprofile ALTER COLUMN user_id TYPE bigint;"
+        'CREATE  INDEX "group_id_6969_idx"  on userprofile ("group_id");'
+        'CREATE  INDEX "user_id_6969_idx"  on userprofile ("user_id");'
     )
+    for sql in sqls.split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     # make migration
     old_schema = await danio.Schema.from_db(db, UserProfile)
     migration: danio.Migration = UserProfile.schema - old_schema
@@ -628,19 +555,26 @@ async def test_migrate():
     assert migration.drop_indexes[1].fields[0].name in ("group_id", "user_id")
     assert len(migration.change_type_fields) == 1
     # migrate
-    await db.execute(migration.to_sql())
+    for sql in migration.to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     assert UserProfile.schema == await danio.Schema.from_db(db, UserProfile)
     # down migrate
-    await db.execute((~migration).to_sql())
+    for sql in (~migration).to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
     assert old_schema == await danio.Schema.from_db(db, UserProfile)
     # drop table
-    await db.execute((~(UserProfile.schema - None)).to_sql())
+    for sql in (~(UserProfile.schema - None)).to_sql(type=db.type).split(";"):
+        if sql:
+            await db.execute(sql + ";" if sql[-1] != ";" else "")
 
 
 @pytest.mark.asyncio
 async def test_manage():
     @dataclasses.dataclass
     class UserProfile(User):
+        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
         user_id: int = danio.field(field_cls=danio.IntField)
         level: int = danio.field(field_cls=danio.IntField, default=1)
         coins: int = danio.field(field_cls=danio.IntField)

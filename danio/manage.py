@@ -23,7 +23,9 @@ async def make_migration(
     """Make migration sql, compare model schema and database schema"""
     sqls = []
     down_sqls = []
+    min_len = 0
     if db.type == Database.Type.MYSQL:
+        min_len = 1
         sqls.append(f"USE `{db.url.database}`;")
     down_sqls.extend(sqls)
     for m in models:
@@ -32,7 +34,7 @@ async def make_migration(
         if migration_sql:
             sqls.append(migration_sql)
             down_sqls.append((~migration).to_sql(type=db.type))
-    if len(sqls) == 1:
+    if len(sqls) == min_len:
         logging.info("No migration detected")
         return ""
     # write to file
