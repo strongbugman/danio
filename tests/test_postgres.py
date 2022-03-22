@@ -13,23 +13,23 @@ import danio
 
 db_name = "test_danio"
 db = danio.Database(
-    f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
     min_size=1,
     max_size=3,
     max_inactive_connection_lifetime=60,
 )
 read_db = danio.Database(
-    f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
     min_size=1,
     max_size=3,
 )
 db2 = danio.Database(
-    f"aiopg://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    f"aiopg://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
     min_size=1,
     max_size=3,
 )
 read_db2 = danio.Database(
-    f"aiopg://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    f"aiopg://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
     min_size=1,
     max_size=3,
 )
@@ -90,7 +90,7 @@ class User(danio.Model):
 @pytest.fixture(autouse=True)
 async def database():
     _db = danio.Database(
-        f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/",
+        f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/",
         min_size=1,
         max_size=3,
         max_inactive_connection_lifetime=60,
