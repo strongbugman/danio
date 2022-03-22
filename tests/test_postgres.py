@@ -4,6 +4,7 @@ import datetime
 import enum
 import glob
 import os
+import random
 import typing
 
 import pytest
@@ -21,7 +22,16 @@ read_db = danio.Database(
     f"postgres://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
     min_size=1,
     max_size=3,
-    max_inactive_connection_lifetime=60,
+)
+db2 = danio.Database(
+    f"aiopg://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    min_size=1,
+    max_size=3,
+)
+read_db2 = danio.Database(
+    f"aiopg://postgres:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'postgres')}:5432/{db_name}",
+    min_size=1,
+    max_size=3,
 )
 
 
@@ -72,9 +82,9 @@ class User(danio.Model):
         cls, operation: danio.Operation, table: str, *args, **kwargs
     ) -> danio.Database:
         if operation == danio.Operation.READ:
-            return read_db
+            return read_db if random.randint(1, 10) > 5 else read_db2
         else:
-            return db
+            return db if random.randint(1, 10) > 5 else db2
 
 
 @pytest.fixture(autouse=True)
@@ -94,11 +104,15 @@ async def database():
         )
         await db.connect()
         await read_db.connect()
+        await read_db2.connect()
+        await db2.connect()
         await db.execute(danio.Schema.from_model(User).to_sql(type=db.type))
         yield db
     finally:
         await db.disconnect()
         await read_db.disconnect()
+        await read_db2.disconnect()
+        await db2.disconnect()
         await _db.execute(f"DROP DATABASE {db_name};")
         await _db.disconnect()
         for f in glob.glob("./tests/migrations/*.sql"):

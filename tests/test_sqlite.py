@@ -334,7 +334,7 @@ async def test_migrate():
                 "ALTER TABLE userprofile ADD COLUMN `group_id` INTEGER NOT NULL DEFAULT 0;"
                 "CREATE  INDEX `userprofile_group_id_6969_idx`  on `userprofile` (`group_id`);"
                 "CREATE  INDEX `userprofile_user_id_6969_idx`  on `userprofile` (`user_id`);"
-                "DROP INDEX userprofile_level_11_idx;"
+                "DROP INDEX level_11_idx;"
                 "ALTER TABLE userprofile DROP COLUMN level;"
             )
     # make migration

@@ -48,7 +48,7 @@ class Field:
     describe: str = ""
     type: str = ""
     primary: bool = False
-    auto_increment: bool = False  # TODO: delete
+    auto_increment: bool = False
     comment: str = ""
     enum: typing.Optional[typing.Type[enum.Enum]] = None
 
@@ -72,7 +72,10 @@ class Field:
             # for int(10) integer int
             type = "int"
         else:
-            type = self.type
+            type = self.type.lower()
+        if "serial" in type:
+            # for postgresql serial field
+            type = type.replace("serial", "int")
         return hash(
             (
                 self.name,
@@ -314,10 +317,8 @@ class Index:
                 f"{qt}{self.name}{qt} "
                 f"({', '.join(f'{qt}{f.name}{qt}' for f in self.fields)})"
             )
-        elif type == Database.Type.POSTGRES:
-            return f"CREATE {'UNIQUE ' if self.unique else ' '}INDEX {qt}{self.name}{qt} on {qt}{{table_name}}{qt} ({', '.join(f'{qt}{f.name}{qt}' for f in self.fields)});"
         else:
-            return f"CREATE {'UNIQUE ' if self.unique else ' '}INDEX {qt}{{table_name}}_{self.name}{qt} on {qt}{{table_name}}{qt} ({', '.join(f'{qt}{f.name}{qt}' for f in self.fields)});"
+            return ""
 
 
 @dataclasses.dataclass
@@ -415,7 +416,9 @@ class Schema:
         if type != Database.Type.MYSQL:
             _sqls = []
             for index in self.indexes:
-                _sqls.append(index.to_sql(type=type).format(table_name=self.name))
+                _sqls.append(
+                    f"CREATE {'UNIQUE ' if index.unique else ' '}INDEX {qt}{index.name}{qt} on {qt}{self.name}{qt} ({', '.join(f'{qt}{f.name}{qt}' for f in index.fields)});"
+                )
             sql += "\n".join(_sqls)
 
         return sql
@@ -498,47 +501,41 @@ class Schema:
                 raise e
         elif database.type == Database.Type.SQLITE:
             field_name_pattern = re.compile(r"`([^ ,]*)`")
-            try:
-                for d in await database.fetch_all(
-                    f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
-                ):
-                    if d[0] == "table":
-                        for line in d[4].split("\n")[1:]:
-                            names = field_name_pattern.findall(line)
-                            if names:
-                                db_name = names[0]
-                                name = model_names.get(db_name, "")
-                                primary = False
-                                if "PRIMARY" in line:
-                                    primary = True
-                                auto_increment = False
-                                if "AUTOINCREMENT" in line:
-                                    auto_increment = True
-                                schema.fields.add(
-                                    Field(
-                                        name=db_name,
-                                        type=line.split("`")[-1].split(" ")[1],
-                                        model_name=name,
-                                        primary=primary,
-                                        auto_increment=auto_increment,
-                                    )
+            for d in await database.fetch_all(
+                f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
+            ):
+                if d[0] == "table":
+                    for line in d[4].split("\n")[1:]:
+                        names = field_name_pattern.findall(line)
+                        if names:
+                            db_name = names[0]
+                            name = model_names.get(db_name, "")
+                            primary = False
+                            if "PRIMARY" in line:
+                                primary = True
+                            auto_increment = False
+                            if "AUTOINCREMENT" in line:
+                                auto_increment = True
+                            schema.fields.add(
+                                Field(
+                                    name=db_name,
+                                    type=line.split("`")[-1].split(" ")[1],
+                                    model_name=name,
+                                    primary=primary,
+                                    auto_increment=auto_increment,
                                 )
-                    elif d[0] == "index":
-                        fields = {f.name: f for f in schema.fields}
-                        _names = field_name_pattern.findall(d[4])
-                        index_fields = [fields[n] for n in _names[2:]]
-                        schema.indexes.add(
-                            Index(
-                                fields=index_fields,
-                                unique="UNIQUE" in d[4],
-                                name=d[1],
                             )
+                elif d[0] == "index":
+                    fields = {f.name: f for f in schema.fields}
+                    _names = field_name_pattern.findall(d[4])
+                    index_fields = [fields[n] for n in _names[2:]]
+                    schema.indexes.add(
+                        Index(
+                            fields=index_fields,
+                            unique="UNIQUE" in d[4],
+                            name=d[1],
                         )
-            except Exception as e:
-                # TODO
-                if "doesn't exist" in str(e):
-                    return None
-                raise e
+                    )
         else:
             for d in await database.fetch_all(
                 f"SELECT * FROM information_schema.columns WHERE table_name = '{m.table_name}';"
@@ -566,12 +563,6 @@ class Schema:
                 if d["indexname"].endswith("_pkey"):
                     primary_field = index_fields[0]
                     primary_field.primary = True
-                    if primary_field.type.startswith("smallint"):
-                        primary_field.type = "smallserial"
-                    elif primary_field.type.startswith("bigint"):
-                        primary_field.type = "bigserial"
-                    else:
-                        primary_field.type = "serial"
                 else:
                     schema.indexes.add(
                         Index(
@@ -667,9 +658,6 @@ class Migration:
                         f"ALTER TABLE {qt}{self.schema.name}{qt} ALTER COLUMN {qt}{f.name}{qt} TYPE {f.type}"
                     )
             for i in self.add_indexes:
-                # TODO: SQLite INDEX name
-                # if type == type.SQLITE:
-                #     index_name
                 sqls.append(
                     f"CREATE {'UNIQUE ' if i.unique else ''}INDEX {qt}{i.name}{qt} on {qt}{self.schema.name}{qt} ({','.join(qt + f.name + qt for f in i.fields)})"
                 )
