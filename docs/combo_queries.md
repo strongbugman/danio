@@ -30,6 +30,7 @@ async def create_or_update(
     fields: typing.Sequence[Field] = (),
     update_fields: typing.Sequence[Field] = (),
     validate: bool = True,
+    for_update: bool = True,
 ) -> typing.Tuple[MODEL_TV, bool, bool]
 ```
 
