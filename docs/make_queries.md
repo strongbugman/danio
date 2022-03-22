@@ -99,7 +99,7 @@ await Cat(id=1, name="dangdang", age=5).update(fields=[Cat.name])  # only name f
 
 ## Where Chain
 
-Danio use `where chain` to express and execute basic SQL Actually.
+Danio use `where chain` to express and execute basic SQL actually.
 
 
 ```python
@@ -149,11 +149,11 @@ Except `fetch_all`, `fetch_one`, there are raw sql operation method(without mode
 
     `async def delete(self) -> int`
 
-* for_update - select with `FOR UPDATE` lock
+* for_update - select with `UPDATE` lock
 
     `def for_update(self) -> Crud`
 
-* for_select - select with `SHARE MODE` lock
+* for_select - select with `SHARE` lock
 
     `def for_select(self) -> Crud`
 

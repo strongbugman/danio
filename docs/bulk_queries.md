@@ -90,10 +90,11 @@ async def upsert(
     insert_data: typing.List[typing.Dict[str, typing.Any]],
     database: typing.Optional[Database] = None,
     update_fields: typing.Sequence[str] = (),
+    conflict_targets: typing.Sequence[str] = (),
 ) -> typing.Tuple[bool, bool]
 ```
 
-This method using [insert on duplicate](https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html), sql example:
+This method using insert on duplicate, sql example for MySQL:
 ```sql
 INSERT INTO <table> (<f1>,<f2>) VALUES (<v1>,<v2>)
   ON DUPLICATE KEY UPDATE <f2>=VALUES(<f2>);
@@ -108,3 +109,17 @@ created, updated = await User.upsert(
     update_fields=["name"],
 )
 ```
+
+### Difference between Databases
+
+For MySQL, `updated` means the table has been real updated(It will be False if update to original value), but MySQL will only update the first matched unique key if there are many matched conflict unique keys.
+
+For PostgreSQL, `created` and `updated` will always be true, need explicit `conflict_targets`.
+
+For SQLITE, `updated` will always be true.
+
+Documents:
+
+* https://dev.mysql.com/doc/refman/5.6/en/insert-on-duplicate.html
+* https://www.sqlite.org/lang_upsert.html
+* https://www.postgresql.org/docs/9.4/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING

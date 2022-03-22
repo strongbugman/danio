@@ -24,10 +24,8 @@ class User(danio.Model):
         danio.IntField, primary=True, auto_increment=True, default=0, type="INTEGER"
     )
     name: str = danio.field(danio.CharField, type="CHAR(255)")
-    age: int = danio.field(danio.IntField, type="INTEGER")
-    gender: Gender = danio.field(
-        danio.IntField, enum=Gender, default=Gender.MALE, type="INTEGER"
-    )
+    age: int = danio.field(danio.IntField)
+    gender: Gender = danio.field(danio.IntField, enum=Gender, default=Gender.MALE)
 
     @classmethod
     def get_database(
@@ -101,6 +99,7 @@ async def test_sql():
             dict(id=100, name="user", age=18, gender=1),
         ],
         update_fields=["name"],
+        conflict_targets=("id",),
     )
     assert created
     assert updated
@@ -245,28 +244,30 @@ async def test_combo_operations():
     assert up.level == 10
     # create or update
     up, created, updated = await UserProfile(user_id=2, level=10).create_or_update(
-        key_fields=(UserProfile.user_id,)
+        key_fields=(UserProfile.user_id,), for_update=False
     )
     assert up.id
     assert created
     assert not updated
     # --
     up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
-        key_fields=(UserProfile.user_id,)
+        key_fields=(UserProfile.user_id,), for_update=False
     )
     assert up.id
     assert not created
     assert updated
     # --
     up, created, updated = await UserProfile(user_id=2, level=11).create_or_update(
-        key_fields=(UserProfile.user_id,)
+        key_fields=(UserProfile.user_id,), for_update=False
     )
     assert up.id
     assert not created
     assert updated
     # --
     up, created, updated = await UserProfile(user_id=2, level=12).create_or_update(
-        key_fields=(UserProfile.user_id,), update_fields=(UserProfile.user_id,)
+        key_fields=(UserProfile.user_id,),
+        update_fields=(UserProfile.user_id,),
+        for_update=False,
     )
     assert up.id
     assert not created
@@ -332,7 +333,7 @@ async def test_migrate():
                 "ALTER TABLE userprofile ADD COLUMN `group_id` INTEGER NOT NULL DEFAULT 0;"
                 "CREATE  INDEX `userprofile_group_id_6969_idx`  on `userprofile` (`group_id`);"
                 "CREATE  INDEX `userprofile_user_id_6969_idx`  on `userprofile` (`user_id`);"
-                "DROP INDEX userprofile_level_11_idx;"
+                "DROP INDEX level_11_idx;"
                 "ALTER TABLE userprofile DROP COLUMN level;"
             )
     # make migration
