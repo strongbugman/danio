@@ -33,9 +33,9 @@ class Cat(danio.Model):
 There are the corresponding database table schema:
 ```sql
 CREATE TABLE `cat` (
-`id` int(10) NOT NULL AUTO_INCREMENT COMMENT '',
+`id` int NOT NULL AUTO_INCREMENT COMMENT '',
 `name` varchar(255) NOT NULL  COMMENT 'cat name',
-`age` int(10) NOT NULL  COMMENT '',
+`age` int NOT NULL  COMMENT '',
 PRIMARY KEY (`id`),
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;;
 ```
