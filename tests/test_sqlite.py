@@ -24,10 +24,8 @@ class User(danio.Model):
         danio.IntField, primary=True, auto_increment=True, default=0, type="INTEGER"
     )
     name: str = danio.field(danio.CharField, type="CHAR(255)")
-    age: int = danio.field(danio.IntField, type="INTEGER")
-    gender: Gender = danio.field(
-        danio.IntField, enum=Gender, default=Gender.MALE, type="INTEGER"
-    )
+    age: int = danio.field(danio.IntField)
+    gender: Gender = danio.field(danio.IntField, enum=Gender, default=Gender.MALE)
 
     @classmethod
     def get_database(
@@ -101,6 +99,7 @@ async def test_sql():
             dict(id=100, name="user", age=18, gender=1),
         ],
         update_fields=["name"],
+        conflict_targets=("id",),
     )
     assert created
     assert updated

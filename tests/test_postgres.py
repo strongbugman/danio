@@ -106,7 +106,9 @@ async def database():
         await read_db.connect()
         await read_db2.connect()
         await db2.connect()
-        await db.execute(danio.Schema.from_model(User).to_sql(type=db.type))
+        for sql in danio.Schema.from_model(User).to_sql(type=db.type).split(";"):
+            if sql:
+                await db.execute(sql + ";")
         yield db
     finally:
         await db.disconnect()

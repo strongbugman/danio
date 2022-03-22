@@ -45,7 +45,6 @@ class Field:
     name: str = ""
     model_name: str = ""
     default: typing.Any = NoDefault  # for model layer
-    describe: str = ""
     type: str = ""
     primary: bool = False
     auto_increment: bool = False
@@ -60,8 +59,7 @@ class Field:
             return copy.copy(self.default)
 
     def __post_init__(self):
-        # from model field
-        if not self.describe and not self.type and self.TYPE:
+        if not self.type and self.TYPE:
             self.type = self.TYPE
 
         if self.enum and not isinstance(self.default, self.enum):
@@ -134,7 +132,8 @@ class Field:
         if type == Database.Type.MYSQL:
             return f"{qt}{self.name}{qt} {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
         elif type == Database.Type.POSTGRES:
-            return f"{qt}{self.name}{qt} {self.type}  NOT NULL"
+            # only support "serail" type for auto increment field
+            return f"{qt}{self.name}{qt} {self.type}  {'PRIMARY KEY ' if self.primary else ' '}NOT NULL"
         else:
             return f"{qt}{self.name}{qt} {self.type} {'PRIMARY KEY ' if self.primary else ' '}{'AUTOINCREMENT ' if self.auto_increment else ' '}{'NOT NULL' if not self.primary else ''}"
 
@@ -222,14 +221,7 @@ class TextField(CharField):
 
 
 @dataclasses.dataclass(eq=False)
-class ComplexField(Field):
-    pass
-    # def to_database(self, value: typing.Any) -> str:
-    #     return str(value)
-
-
-@dataclasses.dataclass(eq=False)
-class TimeField(ComplexField):
+class TimeField(Field):
     """Using timedelta other than time which only support from '00:00:00' to '23:59:59'"""
 
     TYPE: typing.ClassVar[str] = "time"
@@ -238,14 +230,14 @@ class TimeField(ComplexField):
 
 
 @dataclasses.dataclass(eq=False)
-class DateField(ComplexField):
+class DateField(Field):
     TYPE: typing.ClassVar[str] = "date"
 
     default: typing.Callable = lambda: datetime.now().date()  # noqa
 
 
 @dataclasses.dataclass(eq=False)
-class DateTimeField(ComplexField):
+class DateTimeField(Field):
     TYPE: typing.ClassVar[str] = "datetime"
 
     default: typing.Callable = datetime.now
@@ -261,10 +253,7 @@ class JsonField(Field):
         return json.loads(value)
 
     def to_database(self, value: typing.Any) -> str:
-        if not isinstance(value, str):
-            return json.dumps(value)
-        else:
-            return value
+        return json.dumps(value)
 
 
 def field(
@@ -397,7 +386,7 @@ class Schema:
                 " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
             )
         elif type == Database.Type.POSTGRES:
-            keys = [f"PRIMARY KEY ({qt}{self.primary_field.name}{qt})"]
+            keys = []
             postfix = ";"
         else:
             keys = []
@@ -420,7 +409,14 @@ class Schema:
                     f"CREATE {'UNIQUE ' if index.unique else ' '}INDEX {qt}{index.name}{qt} on {qt}{self.name}{qt} ({', '.join(f'{qt}{f.name}{qt}' for f in index.fields)});"
                 )
             sql += "\n".join(_sqls)
-
+        if type == type.POSTGRES:
+            _sqls = []
+            for f in self.fields:
+                if f.comment:
+                    _sqls.append(
+                        f'COMMENT ON COLUMN "{self.name}"."{f.name}" is \'{f.comment}\';'
+                    )
+            sql += "\n".join(_sqls)
         return sql
 
     @classmethod
@@ -765,13 +761,13 @@ class Model:
                 )
 
     def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
-        """Dump dataclass to DB level dict"""
+        """Dump model to dict with only database fields"""
         data = {}
         field_names = {f.name for f in fields}
         for f in self.schema.fields:
             if field_names and f.name not in field_names:
                 continue
-            data[f.name] = f.to_database(getattr(self, f.model_name))
+            data[f.name] = getattr(self, f.model_name)
 
         return data
 
@@ -1488,13 +1484,14 @@ class Insert(BaseSQLBuilder):
         assert self.insert_data
         assert self.model
         qt = Database.get_quote(type)
+        fields = {f.name: f for f in self.model.schema.fields}
 
         keys = list(self.insert_data[0].keys())
         vars = []
         for d in self.insert_data:
             _vars = []
             for k in keys:
-                _vars.append(self.mark(d[k]))
+                _vars.append(self.mark(fields[k].to_database(d[k])))
             vars.append(_vars)
         sql = f"INSERT INTO {qt}{self.model.table_name}{qt} ({', '.join(map(lambda x: f'{qt}{x}{qt}', keys))}) VALUES"
         insert_value_sql = []
@@ -1563,7 +1560,9 @@ class CaseUpdate(BaseSQLBuilder):
                 if k == self.model.schema.primary_field.name:
                     primary_values.append(v)
                 else:
-                    parse_data[k][d[self.model.schema.primary_field.name]] = v
+                    parse_data[k][d[self.model.schema.primary_field.name]] = fields[
+                        k
+                    ].to_database(v)
         sql = f"UPDATE {qt}{self.model.table_name}{qt} SET"
         _sqls = []
         for k, vs in parse_data.items():
