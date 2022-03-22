@@ -49,8 +49,8 @@ jobs:
         poetry install
     - name: Test
       env:
-        MYSQL_HOST: "127.0.0.1"
-        POSTGRES_HOST: "127.0.0.1"
+        MYSQL_HOST: "mysql"
+        POSTGRES_HOST: "postgres"
         MYSQL_PASSWORD: "root"
         POSTGRES_PASSWORD: "root"
       run: |
