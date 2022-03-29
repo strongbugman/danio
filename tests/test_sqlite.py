@@ -25,7 +25,9 @@ class User(danio.Model):
     )
     name: str = danio.field(danio.CharField, type="CHAR(255)")
     age: int = danio.field(danio.IntField)
-    gender: Gender = danio.field(danio.IntField, enum=Gender, default=Gender.MALE)
+    gender: Gender = danio.field(
+        danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
+    )
 
     @classmethod
     def get_database(

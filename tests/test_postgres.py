@@ -62,7 +62,9 @@ class User(danio.Model):
         type="timestamp without time zone",
         comment="when created",
     )
-    gender: Gender = danio.field(danio.IntField, enum=Gender, default=Gender.MALE)
+    gender: Gender = danio.field(
+        danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
+    )
 
     async def before_create(self, **kwargs):
         global user_count

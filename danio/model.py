@@ -48,6 +48,7 @@ class Field:
     type: str = ""
     primary: bool = False
     auto_increment: bool = False
+    not_null: bool = True
     comment: str = ""
     enum: typing.Optional[typing.Type[enum.Enum]] = None
 
@@ -129,13 +130,14 @@ class Field:
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         qt = Database.get_quote(type)
+        not_null = " NOT NULL " if self.not_null else " "
         if type == Database.Type.MYSQL:
-            return f"{qt}{self.name}{qt} {self.type} NOT NULL {'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
+            return f"{qt}{self.name}{qt} {self.type}{not_null}{'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
         elif type == Database.Type.POSTGRES:
             # only support "serail" type for auto increment field
-            return f"{qt}{self.name}{qt} {self.type}  {'PRIMARY KEY ' if self.primary else ' '}NOT NULL"
+            return f"{qt}{self.name}{qt} {self.type}  {'PRIMARY KEY ' if self.primary else ' '}{not_null}"
         else:
-            return f"{qt}{self.name}{qt} {self.type} {'PRIMARY KEY ' if self.primary else ' '}{'AUTOINCREMENT ' if self.auto_increment else ' '}{'NOT NULL' if not self.primary else ''}"
+            return f"{qt}{self.name}{qt} {self.type} {'PRIMARY KEY ' if self.primary else ' '}{'AUTOINCREMENT ' if self.auto_increment else ' '}{not_null if not self.primary else ''}"
 
     def to_python(self, value: typing.Any) -> typing.Any:
         """From databases raw to python"""
@@ -264,6 +266,7 @@ def field(
     default=Field.FieldDefault,
     primary=False,
     auto_increment=False,
+    not_null=True,
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any:
     extras = {}
@@ -276,6 +279,7 @@ def field(
         comment=comment,
         primary=primary,
         auto_increment=auto_increment,
+        not_null=not_null,
         enum=enum,
         **extras,
     )
@@ -489,6 +493,7 @@ class Schema:
                                 type=line.split("`")[-1].split(" ")[1],
                                 model_name=name,
                                 auto_increment="AUTO_INCREMENT" in line,
+                                not_null="NOT NULL" in line,
                             )
                         )
             except Exception as e:
