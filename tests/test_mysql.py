@@ -55,6 +55,7 @@ class User(danio.Model):
     gender: Gender = danio.field(
         danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
     )
+    _table_index_keys = ((created_at,),)
 
     async def before_create(self, **kwargs):
         global user_count
@@ -90,7 +91,7 @@ async def database():
             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         )
         await db.execute(f"USE `{db_name}`;")
-        await db.execute(danio.Schema.from_model(User).to_sql())
+        await db.execute(User.schema.to_sql())
         await read_db.execute(f"USE `{db_name}`;")
         yield db
     finally:
@@ -233,6 +234,16 @@ async def test_sql():
         for u in await User.where(database=db).for_share().fetch_all():
             u.name += "_updated"
             u.save(fields=[User.name], database=db)
+    # use index
+    await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().use_index(
+        [list(User.schema.indexes)[0].name, list(User.schema.indexes)[0].name]
+    ).fetch_all()
+    await User.where().ignore_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().force_index(
+        [list(User.schema.indexes)[0].name], _for="FOR ORDER BY"
+    ).order_by(User.created_at).fetch_all()
     # upsert
 
     @dataclasses.dataclass

@@ -28,6 +28,7 @@ class User(danio.Model):
     gender: Gender = danio.field(
         danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
     )
+    _table_index_keys = ((name,),)
 
     @classmethod
     def get_database(
@@ -42,9 +43,9 @@ async def database():
     if not os.path.exists(os.path.join("tests", "migrations")):
         os.mkdir(os.path.join("tests", "migrations"))
     try:
-        await db.execute(
-            danio.Schema.from_model(User).to_sql(type=danio.Database.Type.SQLITE)
-        )
+        async with db.connection() as connection:
+            async with connection._connection._connection.cursor() as cursor:
+                await cursor.executescript(User.schema.to_sql(type=db.type))
         yield db
     finally:
         for f in glob.glob("./tests/migrations/*.sql"):
@@ -92,6 +93,10 @@ async def test_sql():
     # delete
     await User.where().delete()
     assert not await User.where().fetch_count()
+    # use index
+    await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().ignore_index([]).fetch_all()
     # upset
     if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.38":
         # Upset test with 3.38+

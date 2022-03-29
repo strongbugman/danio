@@ -27,7 +27,7 @@ from .utils import class_property
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
-CURD_TV = typing.TypeVar("CURD_TV", bound="Crud")
+CRUD_TV = typing.TypeVar("CRUD_TV", bound="Crud")
 MARKER_TV = typing.TypeVar("MARKER_TV", bound="SQLMarker")
 CASE_TV = typing.TypeVar("CASE_TV", bound="SQLCase")
 
@@ -682,10 +682,10 @@ class Model:
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
     _table_index_keys: typing.ClassVar[
-        typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
+        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
     ] = tuple()
     _table_unique_keys: typing.ClassVar[
-        typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
+        typing.Tuple[typing.Tuple[typing.Any, ...], ...]
     ] = tuple()
     _table_abstracted: typing.ClassVar[
         bool
@@ -1295,6 +1295,15 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     _order_by_asc: bool = False
     _for_update: bool = False
     _for_share: bool = False
+    _use_indexes: typing.List[
+        typing.Tuple[typing.Sequence[str], str]
+    ] = dataclasses.field(default_factory=list)
+    _ignore_indexes: typing.List[
+        typing.Tuple[typing.Sequence[str], str]
+    ] = dataclasses.field(default_factory=list)
+    _force_indexes: typing.List[
+        typing.Tuple[typing.Sequence[str], str]
+    ] = dataclasses.field(default_factory=list)
 
     async def fetch_all(
         self, fields: typing.Sequence[Field] = tuple()
@@ -1358,11 +1367,11 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         )[1]
 
     def where(
-        self: CURD_TV,
+        self: CRUD_TV,
         *conditions: SQLExpression,
         raw="",
         is_and=True,
-    ) -> CURD_TV:
+    ) -> CRUD_TV:
         if conditions:
             _where = reduce(lambda c1, c2: c1 & c2 if is_and else c1 | c2, conditions)
             if self._where:
@@ -1374,25 +1383,45 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
         return self
 
-    def limit(self, n: int) -> Crud:
+    def limit(self: CRUD_TV, n: int) -> CRUD_TV:
         self._limit = n
         return self
 
-    def offset(self, n: int) -> Crud:
+    def offset(self: CRUD_TV, n: int) -> CRUD_TV:
         self._offset = n
         return self
 
-    def order_by(self, f: typing.Union[Field, SQLExpression], asc=True) -> Crud:
+    def order_by(
+        self: CRUD_TV, f: typing.Union[Field, SQLExpression], asc=True
+    ) -> CRUD_TV:
         self._order_by = f
         self._order_by_asc = asc
         return self
 
-    def for_update(self) -> Crud:
+    def for_update(self: CRUD_TV) -> CRUD_TV:
         self._for_update = True
         return self
 
-    def for_share(self) -> Crud:
+    def for_share(self: CRUD_TV) -> CRUD_TV:
         self._for_share = True
+        return self
+
+    def use_index(
+        self: CRUD_TV, indexes: typing.Sequence[str], _for: str = ""
+    ) -> CRUD_TV:
+        self._use_indexes.append((indexes, _for))
+        return self
+
+    def ignore_index(
+        self: CRUD_TV, indexes: typing.Sequence[str], _for: str = ""
+    ) -> CRUD_TV:
+        self._ignore_indexes.append((indexes, _for))
+        return self
+
+    def force_index(
+        self: CRUD_TV, indexes: typing.Sequence[str], _for: str = ""
+    ) -> CRUD_TV:
+        self._force_indexes.append((indexes, _for))
         return self
 
     def to_select_sql(
@@ -1405,6 +1434,24 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             sql = f"SELECT {', '.join(f'{qt}{f.name}{qt}' for f in self.fields or self.model.schema.fields)} FROM {qt}{self.model.table_name}{qt}"
         else:
             sql = f"SELECT COUNT(*) FROM {qt}{self.model.table_name}{qt}"
+        if type == type.MYSQL:
+            for indexes in self._use_indexes:
+                sql += f" USE INDEX {indexes[1] if indexes[1] else ''} ({','.join(indexes[0])}) "
+            for indexes in self._ignore_indexes:
+                sql += f" IGNORE INDEX {indexes[1] if indexes[1] else ''} ({','.join(indexes[0])}) "
+            for indexes in self._force_indexes:
+                sql += f" FORCE INDEX {indexes[1] if indexes[1] else ''} ({','.join(indexes[0])}) "
+        elif type == type.SQLITE:
+            _use_indexes = self._use_indexes or self._force_indexes
+            if _use_indexes:
+                sql += f" INDEXED BY {_use_indexes[0][0][0]} "
+            if self._ignore_indexes:
+                sql += " NOT INDEXED "
+        else:
+            if self._use_indexes or self._force_indexes or self._ignore_indexes:
+                raise exception.OperationException(
+                    "For PostgreSQL - index hints not supported"
+                )
         if self._where:
             sql += f" WHERE {self._where.sync(self).to_sql(type=type)}"
         elif self._raw_where:
@@ -1423,14 +1470,14 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             if self._for_update:
                 if type == Database.Type.SQLITE:
                     raise exception.OperationException(
-                        "SQLite do not support FOR UPDATE lock"
+                        "For SQLite - do not support FOR UPDATE lock"
                     )
                 else:
                     sql += " FOR UPDATE"
             elif self._for_share and type != Database.Type.SQLITE:
                 if type == Database.Type.SQLITE:
                     raise exception.OperationException(
-                        "SQLite do not support FOR UPDATE lock"
+                        "For SQLite - do not support FOR UPDATE lock"
                     )
                 elif type == Database.Type.MYSQL:
                     sql += " LOCK IN SHARE MODE"
@@ -1527,7 +1574,7 @@ class Insert(BaseSQLBuilder):
             else:
                 if not self.conflict_targets:
                     raise exception.OperationException(
-                        "For PostgresSQL - ON CONFLICT DO UPDATE, a conflict_target must be provided"
+                        "For PostgresSQL - conflict_target must be provided"
                     )
                 _sql = (
                     f" ON CONFLICT ({','.join(self.conflict_targets)}) DO UPDATE SET "
