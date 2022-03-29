@@ -94,13 +94,13 @@ async def test_sql():
     await User.where().delete()
     assert not await User.where().fetch_count()
     # use index
+    if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.38":
+        # test with 3.38+
+        return
     await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
     await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
     await User.where().ignore_index([]).fetch_all()
     # upset
-    if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.38":
-        # Upset test with 3.38+
-        return
     created, updated = await User.upsert(
         [
             dict(id=100, name="user", age=18, gender=1),
