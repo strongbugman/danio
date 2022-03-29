@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "danio"
-version = "0.4.4.0"
+version = "0.4.4.1"
 description = "ORM for asyncio world by dataclass"
 authors = ["strongbugman <strongbugman@gmail.com>"]
 license = "BSD 3-Clause"
@@ -39,6 +39,7 @@ codecov = "^2.1.12"
 aiosqlite = "^0.17.0"
 asyncpg = "^0.25.0"
 aiopg = "^1.3.3"
+click = "8.0.*"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
