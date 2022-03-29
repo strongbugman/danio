@@ -15,6 +15,7 @@ def field(
     default=Field.FieldDefault,
     primary=False,
     auto_increment=False,
+    not_null=True,
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any
 ```

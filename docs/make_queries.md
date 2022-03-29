@@ -151,11 +151,23 @@ Except `fetch_all`, `fetch_one`, there are raw sql operation method(without mode
 
 * for_update - select with `UPDATE` lock
 
-    `def for_update(self) -> Crud`
+    `def for_update(self: CRUD_TV) -> CRUD_TV`
 
 * for_select - select with `SHARE` lock
 
-    `def for_select(self) -> Crud`
+    `def for_select(self: CRUD_TV) -> CRUD_TV`
+
+* use_index - select with index hints
+
+    `def use_index(self: CRUD_TV, indexes: typing.Sequence[str], _for: str = "") -> CRUD_TV`
+
+* force_index - select with index hints
+
+    `def force_index(self: CRUD_TV, indexes: typing.Sequence[str], _for: str = "") -> CRUD_TV`
+
+* ignore_index - select with index hints
+
+    `def ignore_index(self: CRUD_TV, indexes: typing.Sequence[str], _for: str = "") -> CRUD_TV`
 
 * limit
 
