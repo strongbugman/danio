@@ -246,7 +246,7 @@ class DateTimeField(Field):
 
 
 @dataclasses.dataclass(eq=False)
-class JsonField(Field):
+class JsonField(CharField):
     TYPE: typing.ClassVar[str] = "varchar(2048)"
 
     default: typing.Any = dataclasses.field(default_factory=dict)
