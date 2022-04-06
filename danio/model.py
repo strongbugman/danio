@@ -1229,6 +1229,8 @@ class SQLExpression(SQLMarker):
         for op, value in self.values:
             if op == self.Operator.IN:
                 sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
+            elif op == self.Operator.LK:
+                sql += f" {op.value} :{self.mark(value)}"
             elif isinstance(value, SQLExpression):
                 sql = f"({sql}) {op.value} ({self._parse(value, type=type)})"
             else:
