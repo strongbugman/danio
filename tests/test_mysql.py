@@ -661,5 +661,11 @@ async def test_manage():
     # generate all
     assert not await danio.manage.make_migration(db, [User], "./tests/migrations")
     assert await danio.manage.make_migration(db, [UserProfile], "./tests/migrations")
+    # with out db connection
+    assert await danio.manage.make_migration(
+        danio.Database("mysql://no_connected:3306/"),
+        [UserProfile],
+        "./tests/migrations",
+    )
     # get models
     assert danio.manage.get_models(["tests"])

@@ -11,6 +11,13 @@ class Database(_Database):
         POSTGRES = "postgres"
         SQLITE = "sqlite"
 
+        @property
+        def quote(self) -> str:
+            if self == self.POSTGRES:
+                return '"'
+            else:
+                return "`"
+
     SUPPORTED_BACKENDS = {
         "mysql": "danio.mysql:MySQLBackend",
         "sqlite": "danio.sqlite:SQLiteBackend",
@@ -24,10 +31,3 @@ class Database(_Database):
             if t.value in str(self._backend).lower():
                 return t
         raise exception.SchemaException(f"Can't determine {self._backend}'s type")
-
-    @classmethod
-    def get_quote(cls, type: Type) -> str:
-        if type == cls.Type.POSTGRES:
-            return '"'
-        else:
-            return "`"

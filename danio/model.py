@@ -129,11 +129,11 @@ class Field:
         ).case(expression, value)
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
-        qt = Database.get_quote(type)
+        qt = type.quote
         not_null = " NOT NULL " if self.not_null else " "
-        if type == Database.Type.MYSQL:
+        if type == type.MYSQL:
             return f"{qt}{self.name}{qt} {self.type}{not_null}{'AUTO_INCREMENT ' if self.auto_increment else ' '}COMMENT '{self.comment}'"
-        elif type == Database.Type.POSTGRES:
+        elif type == type.POSTGRES:
             # only support "serail" type for auto increment field
             return f"{qt}{self.name}{qt} {self.type}  {'PRIMARY KEY ' if self.primary else ' '}{not_null}"
         else:
@@ -303,8 +303,8 @@ class Index:
         return self.__hash__() == other.__hash__()
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
-        qt = Database.get_quote(type)
-        if type == Database.Type.MYSQL:
+        qt = type.quote
+        if type == type.MYSQL:
             return (
                 f"{'UNIQUE ' if self.unique else ''}KEY "
                 f"{qt}{self.name}{qt} "
@@ -382,21 +382,21 @@ class Schema:
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.primary_field
-        qt = Database.get_quote(type)
+        qt = type.quote
 
-        if type == Database.Type.MYSQL:
+        if type == type.MYSQL:
             keys = [f"PRIMARY KEY ({qt}{self.primary_field.name}{qt})"]
             postfix = (
                 " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
             )
-        elif type == Database.Type.POSTGRES:
+        elif type == type.POSTGRES:
             keys = []
             postfix = ";"
         else:
             keys = []
             postfix = ";"
 
-        if type == Database.Type.MYSQL:
+        if type == type.MYSQL:
             keys.extend([index.to_sql(type=type) for index in self.indexes])
 
         sql = (
@@ -459,7 +459,7 @@ class Schema:
     ) -> typing.Optional[SCHEMA_TV]:
         schema = cls(name=m.table_name, model=m)
         model_names = {f.name: f.model_name for f in m.schema.fields}
-        if database.type == Database.Type.MYSQL:
+        if database.type == database.type.MYSQL:
             field_name_pattern = re.compile(r"`([^ ,]*)`")
             try:
                 for line in (
@@ -500,7 +500,7 @@ class Schema:
                 if "doesn't exist" in str(e):
                     return None
                 raise e
-        elif database.type == Database.Type.SQLITE:
+        elif database.type == database.type.SQLITE:
             field_name_pattern = re.compile(r"`([^ ,]*)`")
             for d in await database.fetch_all(
                 f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
@@ -609,7 +609,7 @@ class Migration:
         )
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
-        qt = Database.get_quote(type)
+        qt = type.quote
 
         sqls = []
         if self.schema and not self.old_schema:
@@ -622,7 +622,7 @@ class Migration:
                     f"ALTER TABLE {qt}{self.old_schema.name}{qt} RENAME {qt}{self.schema.name}{qt}"
                 )
             for i in self.drop_indexes:
-                if type == Database.Type.MYSQL:
+                if type == type.MYSQL:
                     if not set(i.fields) & set(self.drop_fields):
                         sqls.append(
                             f"ALTER TABLE {qt}{self.schema.name}{qt} DROP INDEX {qt}{i.name}{qt}"
@@ -1033,7 +1033,7 @@ class Model:
         next_ins_id = (
             await Insert(model=cls, database=database, insert_data=data).exec()
         )[0]
-        if database.type == Database.Type.MYSQL:
+        if database.type == database.type.MYSQL:
             for ins in instances:
                 if not ins.primary:
                     setattr(ins, cls.schema.primary_field.model_name, next_ins_id)
@@ -1223,7 +1223,7 @@ class SQLExpression(SQLMarker):
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.field
-        qt = Database.get_quote(type)
+        qt = type.quote
 
         sql = f"{qt}{self.field.name}{qt}"
         for op, value in self.values:
@@ -1252,7 +1252,7 @@ class SQLCase(SQLMarker):
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.cases
-        if type == Database.Type.POSTGRES:
+        if type == type.POSTGRES:
             cast_type = "\:\:" + self.cast_type  # noqa
         else:
             cast_type = ""
@@ -1430,7 +1430,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         self, count=False, type: Database.Type = Database.Type.MYSQL
     ) -> str:
         assert self.model
-        qt = Database.get_quote(type)
+        qt = type.quote
 
         if not count:
             sql = f"SELECT {', '.join(f'{qt}{f.name}{qt}' for f in self.fields or self.model.schema.fields)} FROM {qt}{self.model.table_name}{qt}"
@@ -1470,18 +1470,18 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 assert self._limit, "Offset need limit"
                 sql += f" OFFSET :{self.mark(self._offset)}"
             if self._for_update:
-                if type == Database.Type.SQLITE:
+                if type == type.SQLITE:
                     raise exception.OperationException(
                         "For SQLite - do not support FOR UPDATE lock"
                     )
                 else:
                     sql += " FOR UPDATE"
             elif self._for_share and type != Database.Type.SQLITE:
-                if type == Database.Type.SQLITE:
+                if type == type.SQLITE:
                     raise exception.OperationException(
                         "For SQLite - do not support FOR UPDATE lock"
                     )
-                elif type == Database.Type.MYSQL:
+                elif type == type.MYSQL:
                     sql += " LOCK IN SHARE MODE"
                 else:
                     sql += " FOR SHARE"
@@ -1490,7 +1490,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
 
     def to_delete_sql(self, type: Database.Type = Database.Type.MYSQL):
         assert self.model
-        qt = Database.get_quote(type)
+        qt = type.quote
 
         sql = f"DELETE from {qt}{self.model.table_name}{qt}"
         if self._where:
@@ -1503,7 +1503,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         type: Database.Type = Database.Type.MYSQL,
     ):
         assert self.model
-        qt = Database.get_quote(type)
+        qt = type.quote
 
         fields = {f.model_name: f for f in self.model.schema.fields}
         _sqls = []
@@ -1537,7 +1537,7 @@ class Insert(BaseSQLBuilder):
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.insert_data
         assert self.model
-        qt = Database.get_quote(type)
+        qt = type.quote
         fields = {f.name: f for f in self.model.schema.fields}
 
         keys = list(self.insert_data[0].keys())
@@ -1556,7 +1556,7 @@ class Insert(BaseSQLBuilder):
         if self.update_fields:
             update_value_sql = []
             _sql = ""
-            if type == Database.Type.MYSQL:
+            if type == type.MYSQL:
                 if self.conflict_targets:
                     raise exception.OperationException(
                         "For MySQL - conflict_target not support"
@@ -1564,7 +1564,7 @@ class Insert(BaseSQLBuilder):
                 _sql = " ON DUPLICATE KEY UPDATE "
                 for k in self.update_fields:
                     update_value_sql.append(f"{k} = VALUES({k})")
-            elif type == Database.Type.SQLITE:
+            elif type == type.SQLITE:
                 conflict_target = (
                     f"({','.join(self.conflict_targets)})"
                     if self.conflict_targets
@@ -1584,7 +1584,7 @@ class Insert(BaseSQLBuilder):
                 for k in self.update_fields:
                     update_value_sql.append(f"{k} = EXCLUDED.{k}")
             sql += _sql + ", ".join(update_value_sql)
-        if type == Database.Type.POSTGRES:
+        if type == type.POSTGRES:
             sql += f" RETURNING {self.model.schema.primary_field.name}"
         return sql + ";"
 
@@ -1602,7 +1602,7 @@ class CaseUpdate(BaseSQLBuilder):
     def to_sql(self, type: Database.Type = Database.Type.MYSQL):
         assert self.data
         assert self.model
-        qt = Database.get_quote(type)
+        qt = type.quote
         fields = {f.name: f for f in self.model.schema.fields}
 
         parse_data: typing.DefaultDict[str, typing.Dict[str, typing.Any]] = defaultdict(

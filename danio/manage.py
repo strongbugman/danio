@@ -29,7 +29,8 @@ async def make_migration(
         sqls.append(f"USE `{db.url.database}`;")
     down_sqls.extend(sqls)
     for m in models:
-        migration = m.schema - await Schema.from_db(db, m)
+        db_schema = None if not db.is_connected else await Schema.from_db(db, m)
+        migration = m.schema - db_schema
         migration_sql = migration.to_sql(type=db.type)
         if migration_sql:
             sqls.append(migration_sql)
