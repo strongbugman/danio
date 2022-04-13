@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "danio"
-version = "0.4.4.3"
+version = "0.4.4.4"
 description = "ORM for asyncio world by dataclass"
 authors = ["strongbugman <strongbugman@gmail.com>"]
 license = "BSD 3-Clause"

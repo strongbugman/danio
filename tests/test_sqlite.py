@@ -298,7 +298,12 @@ async def test_schema():
             ("level",),
         )
 
-    assert danio.Schema.from_model(UserProfile) == UserProfile.schema
+    m = danio.Schema.from_model(UserProfile) - UserProfile.schema
+    assert not m.add_fields
+    assert not m.drop_fields
+    assert not m.change_type_fields
+    assert not m.add_indexes
+    assert not m.drop_indexes
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript(UserProfile.schema.to_sql(type=db.type))
@@ -359,11 +364,21 @@ async def test_migrate():
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript(migration.to_sql(type=db.type))
-    assert UserProfile.schema == await danio.Schema.from_db(db, UserProfile)
+    m = UserProfile.schema - await danio.Schema.from_db(db, UserProfile)
+    assert not m.add_fields
+    assert not m.drop_fields
+    assert not m.change_type_fields
+    assert not m.add_indexes
+    assert not m.drop_indexes
     # down migrate
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript((~migration).to_sql(type=db.type))
-    assert old_schema == await danio.Schema.from_db(db, UserProfile)
+    m = old_schema - await danio.Schema.from_db(db, UserProfile)
+    assert not m.add_fields
+    assert not m.drop_fields
+    assert not m.change_type_fields
+    assert not m.add_indexes
+    assert not m.drop_indexes
     # drop table
     await db.execute((~(UserProfile.schema - None)).to_sql())

@@ -66,22 +66,6 @@ class Field:
         if self.enum and not isinstance(self.default, self.enum):
             self.default = list(self.enum)[0]
 
-    def __hash__(self):
-        if self.type.lower().startswith("int"):
-            # for int(10) integer int
-            type = "int"
-        else:
-            type = self.type.lower()
-        if "serial" in type:
-            # for postgresql serial field
-            type = type.replace("serial", "int")
-        return hash(
-            (
-                self.name,
-                type.lower(),
-            )
-        )
-
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
 
@@ -295,13 +279,6 @@ class Index:
         if not self.name:
             self.name = f"{'_'.join(f.name for f in self.fields)[:15]}_{random.randint(1, 10000)}{'_uiq' if self.unique else '_idx'}"
 
-    def __hash__(self):
-        return hash((self.unique, tuple(f.name for f in self.fields)))
-
-    def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Index)
-        return self.__hash__() == other.__hash__()
-
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         qt = type.quote
         if type == type.MYSQL:
@@ -317,8 +294,8 @@ class Index:
 @dataclasses.dataclass
 class Schema:
     name: str
-    indexes: typing.Set[Index] = dataclasses.field(default_factory=set)
-    fields: typing.Set[Field] = dataclasses.field(default_factory=set)
+    indexes: typing.List[Index] = dataclasses.field(default_factory=list)
+    fields: typing.List[Field] = dataclasses.field(default_factory=list)
     abstracted: bool = False
     model: typing.Optional[typing.Type[Model]] = None
 
@@ -329,20 +306,6 @@ class Schema:
                 return f
         raise exception.SchemaException("Primary field not found!")
 
-    def __hash__(self):
-        return hash(
-            (
-                self.name,
-                tuple(f for f in sorted(self.fields, key=lambda f: f.__hash__())),
-                self.primary_field,
-                tuple(i for i in sorted(self.indexes, key=lambda f: f.__hash__())),
-            )
-        )
-
-    def __eq__(self, other: object):
-        assert isinstance(other, Schema)
-        return self.__hash__() == other.__hash__()
-
     def __sub__(self, other: object) -> Migration:
         if other is None:
             return Migration(schema=self, old_schema=None)
@@ -350,33 +313,43 @@ class Schema:
         # fields
         self_fields = {f.name: f for f in self.fields}
         other_fields = {f.name: f for f in other.fields}
-        _add_fields = {
-            f.name: f
-            for f in self.fields
-            if f.name not in other_fields or hash(f) != hash(other_fields[f.name])
-        }
-        _drop_fields = {
-            f.name: f
-            for f in other.fields
-            if f.name not in self_fields or hash(f) != hash(self_fields[f.name])
-        }
         change_type_fields = []
-        change_type_field_names = set(f.name for f in _add_fields.values()) & set(
-            f.name for f in _drop_fields.values()
-        )
-        for f_name in change_type_field_names:
-            field = _add_fields[f_name]
-            _add_fields.pop(f_name)
-            _drop_fields.pop(f_name)
-            change_type_fields.append(field)
+        for f in self.fields:
+            if f.name in other_fields:
+                type1 = f.type.lower()
+                type2 = other_fields[f.name].type.lower()
+                # postgresql serial field
+                type1 = type1.replace("serial", "int")
+                type2 = type2.replace("serial", "int")
+                # integer
+                type1 = type1.replace("integer", "int")
+                type2 = type2.replace("integer", "int")
+                # int int(10)...
+                if "int" in type1:
+                    type1 = type1.split("(")[0]
+                if "int" in type2:
+                    type2 = type2.split("(")[0]
+                if type1 != type2:
+                    change_type_fields.append(f)
+        # indexes
+        self_indexes = {
+            (i.unique, tuple(f.name for f in i.fields)): i for i in self.indexes
+        }
+        other_indexes = {
+            (i.unique, tuple(f.name for f in i.fields)): i for i in other.indexes
+        }
 
         return Migration(
             schema=self,
             old_schema=other,
-            add_indexes=list(set(self.indexes) - set(other.indexes)),
-            drop_indexes=list(set(other.indexes) - set(self.indexes)),
-            add_fields=list(_add_fields.values()),
-            drop_fields=list(_drop_fields.values()),
+            add_indexes=[
+                self_indexes[k] for k in (self_indexes.keys()) - (other_indexes.keys())
+            ],
+            drop_indexes=[
+                other_indexes[k] for k in (other_indexes.keys()) - (self_indexes.keys())
+            ],
+            add_fields=[f for f in self.fields if f.name not in other_fields],
+            drop_fields=[f for f in other.fields if f.name not in self_fields],
             change_type_fields=change_type_fields,
         )
 
@@ -434,7 +407,7 @@ class Schema:
                 if not f.default.name:
                     f.default.name = f.name
                     f.default.__post_init__()
-                schema.fields.add(f.default)
+                schema.fields.append(f.default)
         fields = {f.model_name: f for f in schema.fields}
         # index
         for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):
@@ -450,7 +423,7 @@ class Schema:
                             raise exception.SchemaException(
                                 f"Index: {keys} not supported"
                             )
-                    schema.indexes.add(Index(fields=_fields, unique=i == 1))
+                    schema.indexes.append(Index(fields=_fields, unique=i == 1))
         return schema
 
     @classmethod
@@ -477,7 +450,7 @@ class Schema:
                         _names = field_name_pattern.findall(line)
                         index_name = _names[0]
                         index_fields = [fields[n] for n in _names[1:]]
-                        schema.indexes.add(
+                        schema.indexes.append(
                             Index(
                                 fields=index_fields,
                                 unique="UNIQUE" in line,
@@ -487,7 +460,7 @@ class Schema:
                     else:
                         db_name = field_name_pattern.findall(line)[0]
                         name = model_names.get(db_name, "")
-                        schema.fields.add(
+                        schema.fields.append(
                             Field(
                                 name=db_name,
                                 type=line.split("`")[-1].split(" ")[1],
@@ -517,7 +490,7 @@ class Schema:
                             auto_increment = False
                             if "AUTOINCREMENT" in line:
                                 auto_increment = True
-                            schema.fields.add(
+                            schema.fields.append(
                                 Field(
                                     name=db_name,
                                     type=line.split("`")[-1].split(" ")[1],
@@ -530,7 +503,7 @@ class Schema:
                     fields = {f.name: f for f in schema.fields}
                     _names = field_name_pattern.findall(d[4])
                     index_fields = [fields[n] for n in _names[2:]]
-                    schema.indexes.add(
+                    schema.indexes.append(
                         Index(
                             fields=index_fields,
                             unique="UNIQUE" in d[4],
@@ -548,7 +521,7 @@ class Schema:
                     field_type = f"char({d['character_maximum_length']})"
                 else:
                     field_type = field_type
-                schema.fields.add(
+                schema.fields.append(
                     Field(
                         name=d["column_name"],
                         model_name=model_names.get(d["column_name"], ""),
@@ -565,7 +538,7 @@ class Schema:
                     primary_field = index_fields[0]
                     primary_field.primary = True
                 else:
-                    schema.indexes.add(
+                    schema.indexes.append(
                         Index(
                             fields=index_fields,
                             unique="UNIQUE" in d["indexdef"],
@@ -623,7 +596,9 @@ class Migration:
                 )
             for i in self.drop_indexes:
                 if type == type.MYSQL:
-                    if not set(i.fields) & set(self.drop_fields):
+                    if not set(f.name for f in i.fields) & set(
+                        f.name for f in self.drop_fields
+                    ):
                         sqls.append(
                             f"ALTER TABLE {qt}{self.schema.name}{qt} DROP INDEX {qt}{i.name}{qt}"
                         )
