@@ -157,6 +157,15 @@ async def test_sql():
     assert nu.name == "tester"
     assert nu.gender == User.Gender.MALE
     assert user_count == 11
+    # save exclude special fields
+    u = await User.where().fetch_one()
+    u.name = "tester"
+    u.gender = u.Gender.OTHER
+    u = await u.save(ignore_fields=[User.gender])
+    nu = await User.where(User.id == u.id).fetch_one()
+    assert nu.name == "tester"
+    assert nu.gender == User.Gender.MALE
+    assert user_count == 11
     # save with wrong field
     u = await User.where().fetch_one()
     u.gender = 10
@@ -173,10 +182,11 @@ async def test_sql():
     u = (await User.where(User.id == u.id).fetch_all())[0]
     assert u.name == "admin_user2"
     # read only special field
-    u = await User.where(fields=(User.name,)).fetch_one()
+    u = await User.where().fetch_one(fields=(User.name,))
     assert not u.id
     assert u.name
-    u = await User.where().fetch_one(fields=(User.name,))
+    # read exclude special field
+    u = await User.where().fetch_one(ignore_fields=(User.id,))
     assert not u.id
     assert u.name
     # refetch
@@ -209,7 +219,7 @@ async def test_sql():
     assert await User.where(
         User.gender.contains([g.value for g in User.Gender])
     ).fetch_all()
-    assert (await User.where(fields=[User.id]).fetch_all())[0].name == User.name
+    assert (await User.where().fetch_all(fields=[User.id]))[0].name == User.name
     # combine condition
     u = await User.where().fetch_one()
     u.age = 2

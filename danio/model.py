@@ -740,12 +740,16 @@ class Model:
                     f"{self.table_name}.{f.model_name} required!"
                 )
 
-    def dump(self, fields: typing.Sequence[Field] = ()) -> typing.Dict[str, typing.Any]:
+    def dump(
+        self,
+        fields: typing.Sequence[Field] = (),
+        ignore_fields: typing.Sequence[Field] = (),
+    ) -> typing.Dict[str, typing.Any]:
         """Dump model to dict with only database fields"""
         data = {}
-        field_names = {f.name for f in fields}
-        for f in self.schema.fields:
-            if field_names and f.name not in field_names:
+        _ignore_fields = {f.name for f in ignore_fields}
+        for f in fields or self.schema.fields:
+            if f.name in _ignore_fields:
                 continue
             data[f.name] = getattr(self, f.model_name)
 
@@ -755,9 +759,10 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        ignore_fields: typing.Sequence[Field] = (),
         validate: bool = True,
     ):
-        data = self.dump(fields=fields)
+        data = self.dump(fields=fields, ignore_fields=ignore_fields)
         if (
             self.schema.primary_field.name in data
             and not data[self.schema.primary_field.name]
@@ -780,6 +785,7 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        ignore_fields: typing.Sequence[Field] = (),
         validate: bool = True,
     ) -> bool:
         """
@@ -787,7 +793,7 @@ class Model:
         """
         assert self.primary
         await self.before_update(validate=validate)
-        data = self.dump(fields=fields)
+        data = self.dump(fields=fields, ignore_fields=ignore_fields)
         rowcount = await self.__class__.where(
             self.schema.primary_field == self.primary,
             database=database,
@@ -799,14 +805,25 @@ class Model:
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
         fields: typing.Sequence[Field] = (),
+        ignore_fields: typing.Sequence[Field] = (),
         force_insert=False,
         validate: bool = True,
     ) -> MODEL_TV:
         await self.before_save(validate=validate)
         if self.primary and not force_insert:
-            await self.update(database=database, fields=fields, validate=False)
+            await self.update(
+                database=database,
+                fields=fields,
+                ignore_fields=ignore_fields,
+                validate=False,
+            )
         else:
-            await self.create(database=database, fields=fields, validate=False)
+            await self.create(
+                database=database,
+                fields=fields,
+                ignore_fields=ignore_fields,
+                validate=False,
+            )
         await self.after_save()
         return self
 
@@ -852,10 +869,10 @@ class Model:
         created = False
         for f in key_fields:
             conditions.append(f == getattr(self, f.model_name))
-        where = self.__class__.where(*conditions, database=database, fields=fields)
+        where = self.__class__.where(*conditions, database=database)
         if for_update:
             where = where.for_update()
-        ins = await where.fetch_one()
+        ins = await where.fetch_one(fields=fields)
         if not ins:
             try:
                 ins = await self.create(
@@ -863,12 +880,10 @@ class Model:
                 )
                 created = True
             except exception.IntegrityError as e:
-                where = self.__class__.where(
-                    *conditions, database=database, fields=fields
-                )
+                where = self.__class__.where(*conditions, database=database)
                 if for_update:
                     where = where.for_update()
-                ins = await where.fetch_one()
+                ins = await where.fetch_one(fields=fields)
                 if not ins:
                     raise e
         assert ins
@@ -938,12 +953,11 @@ class Model:
         cls: typing.Type[MODEL_TV],
         *conditions: SQLExpression,
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = tuple(),
         raw="",
         is_and=True,
     ) -> Crud[MODEL_TV]:
         cls.schema
-        return Crud(model=cls, fields=fields, database=database).where(
+        return Crud(model=cls, database=database).where(
             *conditions, is_and=is_and, raw=raw
         )
 
@@ -1262,7 +1276,6 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     OPERATION: typing.ClassVar[Operation] = Operation.READ
 
     model: typing.Optional[typing.Type[MODEL_TV]] = None
-    fields: typing.Sequence[Field] = tuple()
     database: typing.Optional[Database] = None
     _where: typing.Optional[SQLExpression] = None
     _raw_where: str = ""
@@ -1283,13 +1296,19 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     ] = dataclasses.field(default_factory=list)
 
     async def fetch_all(
-        self, fields: typing.Sequence[Field] = tuple()
+        self,
+        fields: typing.Sequence[Field] = tuple(),
+        ignore_fields: typing.Sequence[Field] = tuple(),
     ) -> typing.List[MODEL_TV]:
         assert self.model
-        self.fields = fields if fields else self.fields
         database = self.get_database(Operation.READ)
         instances = self.model.load(
-            await database.fetch_all(self.to_select_sql(type=database.type), self._vars)
+            await database.fetch_all(
+                self.to_select_sql(
+                    type=database.type, fields=fields, ignore_fields=ignore_fields
+                ),
+                self._vars,
+            )
         )
         for ins in instances:
             await ins.after_read()
@@ -1297,13 +1316,17 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         return instances
 
     async def fetch_one(
-        self, fields: typing.Sequence[Field] = tuple()
+        self,
+        fields: typing.Sequence[Field] = tuple(),
+        ignore_fields: typing.Sequence[Field] = tuple(),
     ) -> typing.Optional[MODEL_TV]:
         assert self.model
-        self.fields = fields if fields else self.fields
         database = self.get_database(Operation.READ)
         data = await database.fetch_one(
-            self.to_select_sql(type=database.type), self._vars
+            self.to_select_sql(
+                type=database.type, fields=fields, ignore_fields=ignore_fields
+            ),
+            self._vars,
         )
         if data:
             ins = self.model.load([data])[0]
@@ -1313,12 +1336,16 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             return None
 
     async def fetch_row(
-        self, fields: typing.Sequence[Field] = tuple()
+        self,
+        fields: typing.Sequence[Field] = tuple(),
+        ignore_fields: typing.Sequence[Field] = tuple(),
     ) -> typing.List[typing.Mapping]:
-        self.fields = fields if fields else self.fields
         database = self.get_database(Operation.READ)
         return await database.fetch_all(
-            self.to_select_sql(type=database.type), self._vars
+            self.to_select_sql(
+                type=database.type, fields=fields, ignore_fields=ignore_fields
+            ),
+            self._vars,
         )
 
     async def fetch_count(self) -> int:
@@ -1402,13 +1429,18 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         return self
 
     def to_select_sql(
-        self, count=False, type: Database.Type = Database.Type.MYSQL
+        self,
+        count=False,
+        type: Database.Type = Database.Type.MYSQL,
+        fields: typing.Sequence[Field] = tuple(),
+        ignore_fields: typing.Sequence[Field] = tuple(),
     ) -> str:
         assert self.model
         qt = type.quote
 
         if not count:
-            sql = f"SELECT {', '.join(f'{qt}{f.name}{qt}' for f in self.fields or self.model.schema.fields)} FROM {qt}{self.model.table_name}{qt}"
+            _ignore_fields = {f.name for f in ignore_fields}
+            sql = f"SELECT {', '.join(f'{qt}{f.name}{qt}' for f in fields or self.model.schema.fields if f.name not in _ignore_fields)} FROM {qt}{self.model.table_name}{qt}"
         else:
             sql = f"SELECT COUNT(*) FROM {qt}{self.model.table_name}{qt}"
         if type == type.MYSQL:

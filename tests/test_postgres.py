@@ -194,9 +194,6 @@ async def test_sql():
     u = (await User.where(User.id == u.id).fetch_all())[0]
     assert u.name == "admin_user2"
     # read only special field
-    u = await User.where(fields=(User.name,)).fetch_one()
-    assert not u.id
-    assert u.name
     u = await User.where().fetch_one(fields=(User.name,))
     assert not u.id
     assert u.name
@@ -230,7 +227,6 @@ async def test_sql():
     assert await User.where(
         User.gender.contains([g.value for g in User.Gender])
     ).fetch_all()
-    assert (await User.where(fields=[User.id]).fetch_all())[0].name == User.name
     # combine condition
     u = await User.where().fetch_one()
     u.age = 2
