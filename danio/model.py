@@ -14,6 +14,7 @@ import re
 import typing
 import warnings
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from functools import reduce
 
@@ -655,6 +656,10 @@ class Operation(enum.IntEnum):
 
 @dataclasses.dataclass
 class Model:
+    DATABASE: typing.ClassVar[ContextVar[typing.Optional[Database]]] = ContextVar(
+        "database"
+    )
+
     id: int = field(IntField, primary=True, auto_increment=True)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
@@ -934,6 +939,10 @@ class Model:
         cls, operation: Operation, table: str, *args, **kwargs
     ) -> Database:
         """Get database instance, route database by operation"""
+        db = cls.DATABASE.get()
+        if not db:
+            raise RuntimeError("No database provide")
+        return db
 
     @classmethod
     def load(

@@ -11,6 +11,7 @@ import danio
 db = danio.Database(
     "sqlite://./tests/test.db",
 )
+danio.Model.DATABASE.set(db)
 
 
 @dataclasses.dataclass
@@ -29,12 +30,6 @@ class User(danio.Model):
         danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
     )
     _table_index_keys = ((name,),)
-
-    @classmethod
-    def get_database(
-        cls, operation: danio.Operation, table: str, *args, **kwargs
-    ) -> danio.Database:
-        return db
 
 
 @pytest.fixture(autouse=True)
