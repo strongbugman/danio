@@ -475,11 +475,11 @@ class Schema:
                 raise e
         elif database.type == database.type.SQLITE:
             field_name_pattern = re.compile(r"`([^ ,]*)`")
-            for d in await database.fetch_all(
+            for r in await database.fetch_all(
                 f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
             ):
-                if d[0] == "table":
-                    for line in d[4].split("\n")[1:]:
+                if r[0] == "table":
+                    for line in r[4].split("\n")[1:]:
                         names = field_name_pattern.findall(line)
                         if names:
                             db_name = names[0]
@@ -499,21 +499,22 @@ class Schema:
                                     auto_increment=auto_increment,
                                 )
                             )
-                elif d[0] == "index":
+                elif r[0] == "index":
                     fields = {f.name: f for f in schema.fields}
-                    _names = field_name_pattern.findall(d[4])
+                    _names = field_name_pattern.findall(r[4])
                     index_fields = [fields[n] for n in _names[2:]]
                     schema.indexes.append(
                         Index(
                             fields=index_fields,
-                            unique="UNIQUE" in d[4],
-                            name=d[1],
+                            unique="UNIQUE" in r[4],
+                            name=r[1],
                         )
                     )
         else:
-            for d in await database.fetch_all(
+            for r in await database.fetch_all(
                 f"SELECT * FROM information_schema.columns WHERE table_name = '{m.table_name}';"
             ):
+                d = dict(r)
                 field_type = d["data_type"]
                 if field_type == "character varying":
                     field_type = f"varchar({d['character_maximum_length']})"
@@ -528,9 +529,10 @@ class Schema:
                         type=field_type,
                     )
                 )
-            for d in await database.fetch_all(
+            for r in await database.fetch_all(
                 f"SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '{m.table_name}';"
             ):
+                d = dict(r)
                 fields = {f.name: f for f in schema.fields}
                 _names = d["indexdef"].split("(")[-1].split(")")[0].split(", ")
                 index_fields = [fields[n] for n in _names]
@@ -1303,12 +1305,15 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         assert self.model
         database = self.get_database(Operation.READ)
         instances = self.model.load(
-            await database.fetch_all(
-                self.to_select_sql(
-                    type=database.type, fields=fields, ignore_fields=ignore_fields
-                ),
-                self._vars,
-            )
+            [
+                dict(r)
+                for r in await database.fetch_all(
+                    self.to_select_sql(
+                        type=database.type, fields=fields, ignore_fields=ignore_fields
+                    ),
+                    self._vars,
+                )
+            ]
         )
         for ins in instances:
             await ins.after_read()
@@ -1329,7 +1334,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             self._vars,
         )
         if data:
-            ins = self.model.load([data])[0]
+            ins = self.model.load([dict(data)])[0]
             await ins.after_read()
             return ins
         else:
