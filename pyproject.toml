@@ -21,14 +21,14 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.7"
-databases = "^0.4.3"
+databases = "^0.6.0"
 cached-property = "^1.5.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.0"
 pytest-asyncio = ">=0.18.0"
 pytest-cov = ">=2.5.1"
-aiomysql = "^0.0.21"
+aiomysql = "^0.1.1"
 mypy = "^0.910"
 flake8 = "^3.9.2"
 isort = "^5.9.2"
