@@ -14,6 +14,7 @@ import re
 import typing
 import warnings
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from functools import reduce
 
@@ -655,6 +656,10 @@ class Operation(enum.IntEnum):
 
 @dataclasses.dataclass
 class Model:
+    DATABASE: typing.ClassVar[ContextVar[typing.Optional[Database]]] = ContextVar(
+        "database"
+    )
+
     id: int = field(IntField, primary=True, auto_increment=True)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
@@ -712,9 +717,8 @@ class Model:
     async def after_update(self):
         pass
 
-    async def before_save(self, validate: bool = True):
-        if validate:
-            await self.validate()
+    async def before_save(self):
+        pass
 
     async def after_save(self):
         pass
@@ -811,20 +815,20 @@ class Model:
         force_insert=False,
         validate: bool = True,
     ) -> MODEL_TV:
-        await self.before_save(validate=validate)
+        await self.before_save()
         if self.primary and not force_insert:
             await self.update(
                 database=database,
                 fields=fields,
                 ignore_fields=ignore_fields,
-                validate=False,
+                validate=validate,
             )
         else:
             await self.create(
                 database=database,
                 fields=fields,
                 ignore_fields=ignore_fields,
-                validate=False,
+                validate=validate,
             )
         await self.after_save()
         return self
@@ -935,6 +939,10 @@ class Model:
         cls, operation: Operation, table: str, *args, **kwargs
     ) -> Database:
         """Get database instance, route database by operation"""
+        db = cls.DATABASE.get()
+        if not db:
+            raise RuntimeError("No database provide")
+        return db
 
     @classmethod
     def load(
