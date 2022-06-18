@@ -19,7 +19,6 @@ from functools import reduce
 
 import cached_property
 import sqlalchemy
-from databases.interfaces import Record
 
 from . import exception
 from .database import Database
@@ -939,16 +938,15 @@ class Model:
 
     @classmethod
     def load(
-        cls: typing.Type[MODEL_TV], rows: typing.List[Record]
+        cls: typing.Type[MODEL_TV], rows: typing.List[typing.Mapping]
     ) -> typing.List[MODEL_TV]:
         """Load DB data to model"""
         instances = []
         for row in rows:
             data = {}
-            row_data = dict(row)
             for f in cls.schema.fields:
-                if f.name in row_data:
-                    data[f.model_name] = f.to_python(row_data[f.name])
+                if f.name in row:
+                    data[f.model_name] = f.to_python(row[f.name])
             instances.append(cls(**data))
         return instances
 
@@ -1307,12 +1305,15 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         assert self.model
         database = self.get_database(Operation.READ)
         instances = self.model.load(
-            await database.fetch_all(
-                self.to_select_sql(
-                    type=database.type, fields=fields, ignore_fields=ignore_fields
-                ),
-                self._vars,
-            )
+            [
+                dict(r)
+                for r in await database.fetch_all(
+                    self.to_select_sql(
+                        type=database.type, fields=fields, ignore_fields=ignore_fields
+                    ),
+                    self._vars,
+                )
+            ]
         )
         for ins in instances:
             await ins.after_read()
@@ -1333,7 +1334,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             self._vars,
         )
         if data:
-            ins = self.model.load([data])[0]
+            ins = self.model.load([dict(data)])[0]
             await ins.after_read()
             return ins
         else:
