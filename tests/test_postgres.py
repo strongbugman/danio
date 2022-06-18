@@ -66,13 +66,14 @@ class User(danio.Model):
         danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
     )
 
-    async def before_create(self, **kwargs):
+    async def after_create(self):
         global user_count
         user_count += 1
-        await super().before_create(**kwargs)
+        await super().after_create()
 
     async def before_update(self, **kwargs):
         self.updated_at = datetime.datetime.now()
+        await super().before_update(**kwargs)
 
     async def validate(self):
         await super().validate()
