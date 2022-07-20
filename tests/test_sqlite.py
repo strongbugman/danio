@@ -68,6 +68,15 @@ async def test_sql():
     # read with order by
     assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
     assert await User.where().limit(1).order_by(User.name).fetch_one()
+    assert (
+        await User.where().limit(1).order_by(User.name, User.id, asc=False).fetch_one()
+    )
+    assert (
+        await User.where()
+        .limit(1)
+        .order_by(User.name, User.id - 1, asc=False)
+        .fetch_one()
+    )
     # read with page
     for _ in range(10):
         await User(name="test_users").save()

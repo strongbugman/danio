@@ -152,6 +152,15 @@ async def test_sql():
     # read with order by
     assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
     assert (
+        await User.where().limit(1).order_by(User.name, User.id, asc=False).fetch_one()
+    )
+    assert (
+        await User.where()
+        .limit(1)
+        .order_by(User.name, User.id - 1, asc=False)
+        .fetch_one()
+    )
+    assert (
         await User.where()
         .limit(1)
         .order_by(User.age + User.gender, asc=False)
@@ -236,7 +245,7 @@ async def test_sql():
     # delete many
     await User.where(User.id >= 1).delete()
     assert not await User.where().fetch_all()
-    # transation
+    # transaction
     db = User.get_database(danio.Operation.UPDATE, User.table_name)
     async with db.transaction():
         for u in await User.where(database=db).fetch_all():

@@ -1011,11 +1011,25 @@ class Model:
         validate: bool = True,
     ) -> typing.Sequence[MODEL_TV]:
         assert cls.schema.primary_field
-        for ins in instances:
-            await ins.before_create(validate=validate)
-
         if not database:
             database = cls.get_database(Operation.CREATE, cls.table_name)
+        if (
+            database.type != database.type.POSTGRES
+            and not cls.schema.primary_field.auto_increment
+        ):
+            raise exception.OperationException(
+                f"{cls}'s primary_field must be auto incremented!"
+            )
+        if (
+            database.type == database.type.POSTGRES
+            and "serial" not in cls.schema.primary_field.type
+        ):
+            raise exception.OperationException(
+                f"{cls}'s primary_field must be auto incremented!"
+            )
+
+        for ins in instances:
+            await ins.before_create(validate=validate)
         data = [ins.dump(fields=fields) for ins in instances]
         if database.type != Database.Type.MYSQL:
             for d in data:
@@ -1138,7 +1152,7 @@ class SQLMarker:
         self, value: typing.Any, type: Database.Type = Database.Type.MYSQL
     ) -> str:
         if isinstance(value, Field):
-            return value.name
+            return f"{type.quote}{value.name}{type.quote}"
         elif isinstance(value, SQLMarker):
             return value.sync(self).to_sql(type=type)
         elif self.field:
@@ -1291,7 +1305,9 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     _raw_where: str = ""
     _limit: int = 0
     _offset: int = 0
-    _order_by: typing.Optional[typing.Union[Field, SQLExpression]] = None
+    _order_by: typing.List[typing.Union[Field, SQLExpression]] = dataclasses.field(
+        default_factory=list
+    )
     _order_by_asc: bool = False
     _for_update: bool = False
     _for_share: bool = False
@@ -1409,9 +1425,9 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         return self
 
     def order_by(
-        self: CRUD_TV, f: typing.Union[Field, SQLExpression], asc=True
+        self: CRUD_TV, *f: typing.Union[Field, SQLExpression], asc=True
     ) -> CRUD_TV:
-        self._order_by = f
+        self._order_by.extend(f)
         self._order_by_asc = asc
         return self
 
@@ -1480,10 +1496,13 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             sql += f" WHERE {self._raw_where}"
         if not count:
             if self._order_by:
-                if isinstance(self._order_by, Field):
-                    sql += f" ORDER BY {qt}{self._order_by.name}{qt} {'ASC' if self._order_by_asc else 'DESC'}"
-                elif isinstance(self._order_by, SQLExpression):
-                    sql += f" ORDER BY {self._order_by.sync(self).to_sql(type=type)} {'ASC' if self._order_by_asc else 'DESC'}"
+                _order_by_sql = ", ".join(
+                    [
+                        f"{qt + od.name + qt if isinstance(od, Field) else od.sync(self).to_sql(type=type) }"
+                        for od in self._order_by
+                    ]
+                )
+                sql += f" ORDER BY {_order_by_sql}  {'ASC' if self._order_by_asc else 'DESC'}"
             if self._limit:
                 sql += f" LIMIT :{self.mark(self._limit)}"
             if self._offset:
