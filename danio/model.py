@@ -663,6 +663,8 @@ class Model:
     id: int = field(IntField, primary=True, auto_increment=True)
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
+    _table_name_prefix: typing.ClassVar[str] = ""
+    _table_name_snake_case: typing.ClassVar[bool] = False
     _table_index_keys: typing.ClassVar[
         typing.Tuple[typing.Tuple[typing.Any, ...], ...]
     ] = tuple()
@@ -932,7 +934,11 @@ class Model:
 
     @classmethod
     def get_table_name(cls) -> str:
-        return cls._table_prefix + cls.__name__.lower()
+        prefix = cls._table_name_prefix or cls._table_prefix
+        if cls._table_name_snake_case:
+            return prefix + re.sub(r"(?P<n>[A-Z])", r"_\g<n>", cls.__name__).lower()[1:]
+        else:
+            return prefix + cls.__name__.lower()
 
     @classmethod
     def get_database(

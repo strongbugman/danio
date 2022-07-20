@@ -146,7 +146,7 @@ Danio obtain model schema's table name by `get_table_name` method, just join tab
 ```python
 @classmethod
 def get_table_name(cls) -> str:
-    return cls._table_prefix + cls.__name__.lower()
+    return cls._table_name_prefix + cls.__name__.lower()
 ```
 
 ### Database

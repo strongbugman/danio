@@ -630,6 +630,7 @@ async def test_migrate():
         level: int = danio.field(field_cls=danio.IntField, default=1)
         coins: int = danio.field(field_cls=danio.IntField)
 
+        _table_name_snake_case: typing.ClassVar[bool] = True
         _table_unique_keys: typing.ClassVar = ((user_id,),)
         _table_index_keys: typing.ClassVar = (
             (
@@ -641,11 +642,11 @@ async def test_migrate():
 
     await db.execute((UserProfile.schema - None).to_sql())
     await db.execute(
-        "ALTER TABLE userprofile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
-        "ALTER TABLE userprofile DROP COLUMN level;"
-        "ALTER TABLE userprofile MODIFY user_id bigint(10);"
-        "CREATE  INDEX `group_id_6969_idx`  on userprofile (`group_id`);"
-        "CREATE  INDEX `user_id_6969_idx`  on userprofile (`user_id`);"
+        "ALTER TABLE user_profile ADD COLUMN `group_id` int(10) NOT NULL COMMENT 'User group';"
+        "ALTER TABLE user_profile DROP COLUMN level;"
+        "ALTER TABLE user_profile MODIFY user_id bigint(10);"
+        "CREATE  INDEX `group_id_6969_idx`  on user_profile (`group_id`);"
+        "CREATE  INDEX `user_id_6969_idx`  on user_profile (`user_id`);"
     )
     # make migration
     old_schema = await danio.Schema.from_db(db, UserProfile)
