@@ -1314,7 +1314,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
     _order_by: typing.List[typing.Union[Field, SQLExpression]] = dataclasses.field(
         default_factory=list
     )
-    _order_by_asc: bool = False
+    _order_by_asc: typing.List[bool] = dataclasses.field(default_factory=list)
     _for_update: bool = False
     _for_share: bool = False
     _use_indexes: typing.List[
@@ -1434,7 +1434,7 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
         self: CRUD_TV, *f: typing.Union[Field, SQLExpression], asc=True
     ) -> CRUD_TV:
         self._order_by.extend(f)
-        self._order_by_asc = asc
+        self._order_by_asc.extend([asc] * len(f))
         return self
 
     def for_update(self: CRUD_TV) -> CRUD_TV:
@@ -1504,11 +1504,13 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
             if self._order_by:
                 _order_by_sql = ", ".join(
                     [
-                        f"{qt + od.name + qt if isinstance(od, Field) else od.sync(self).to_sql(type=type) }"
-                        for od in self._order_by
+                        f"{qt + od.name + qt if isinstance(od, Field) else od.sync(self).to_sql(type=type)} {'ASC' if self._order_by_asc[i] else 'DESC'}"
+                        for i, od in enumerate(self._order_by)
                     ]
                 )
-                sql += f" ORDER BY {_order_by_sql}  {'ASC' if self._order_by_asc else 'DESC'}"
+
+                sql += f" ORDER BY {_order_by_sql}"
+                print(sql)
             if self._limit:
                 sql += f" LIMIT :{self.mark(self._limit)}"
             if self._offset:
