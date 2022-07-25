@@ -1510,7 +1510,6 @@ class Crud(BaseSQLBuilder, typing.Generic[MODEL_TV]):
                 )
 
                 sql += f" ORDER BY {_order_by_sql}"
-                print(sql)
             if self._limit:
                 sql += f" LIMIT :{self.mark(self._limit)}"
             if self._offset:
