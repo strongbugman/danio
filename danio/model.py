@@ -7,6 +7,7 @@ import copy
 import dataclasses
 import decimal
 import enum
+import inspect
 import itertools
 import json
 import random
@@ -406,13 +407,24 @@ class Schema:
         schema = cls(name=m.table_name, model=m)
         schema.abstracted = m.__dict__.get("_table_abstracted", False)
         # fields
+        annotations = typing.get_type_hints(m, include_extras=True)
         for f in dataclasses.fields(m):
             if isinstance(f.default, Field):
-                f.default.model_name = f.name
-                if not f.default.name:
-                    f.default.name = f.name
-                    f.default.__post_init__()
-                schema.fields.append(f.default)
+                field = f.default
+                field.model_name = f.name
+                if not field.name:
+                    field.name = f.name
+                schema.fields.append(field)
+            if hasattr(typing, "_AnnotatedAlias"):
+                if isinstance(annotations.get(f.name), getattr(typing, "_AnnotatedAlias")):
+                    for field in annotations[f.name].__metadata__:
+                        if isinstance(field, Field):
+                            field.model_name = f.name
+                            field.default = f.default_factory() if callable(f.default_factory) else f.default
+                            if not field.name:
+                                field.name = f.name
+                            schema.fields.append(field)
+                            break
         fields = {f.model_name: f for f in schema.fields}
         # index
         for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):

@@ -51,7 +51,7 @@ class User(danio.Model):
         comment="User name",
         default=danio.CharField.NoDefault,
     )
-    age: int = danio.field(danio.IntField)
+    age: typing.Annotated[int, danio.IntField()] = 0
     created_at: datetime.datetime = danio.field(
         danio.DateTimeField,
         type="timestamp without time zone",
