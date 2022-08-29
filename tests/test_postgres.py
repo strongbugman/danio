@@ -145,7 +145,7 @@ async def test_sql():
     with pytest.raises(danio.ValidateException):
         await User().save()
     # read
-    assert await User.where(User.id == u.id).fetch_one()
+    assert await User.where(danio.ft(User.id) == u.id).fetch_one()
     assert await User.where(raw=f"id = {u.id}").fetch_one()
     # read with limit
     assert await User.where(User.id == u.id).limit(1).fetch_all()
@@ -233,7 +233,7 @@ async def test_sql():
         .where(User.gender == User.Gender.FEMALE)
         .fetch_all()
     )
-    assert await User.where(User.name.like("test_%")).fetch_all()
+    assert await User.where(danio.ft(User.name).like("test_%")).fetch_all()
     assert await User.where(
         User.gender.contains([g.value for g in User.Gender])
     ).fetch_all()

@@ -103,6 +103,9 @@ class Field:
 
         return SQLExpression(field=self, values=[(SQLExpression.Operator.IN, values)])
 
+    def like(self, value: typing.Any) -> SQLExpression:
+        return SQLExpression(field=self, values=[(SQLExpression.Operator.LK, value)])
+
     def case(
         self,
         expression: SQLExpression,
@@ -196,9 +199,6 @@ class CharField(Field):
 
     default: str = ""
 
-    def like(self, value: typing.Any) -> SQLExpression:
-        return SQLExpression(field=self, values=[(SQLExpression.Operator.LK, value)])
-
 
 @dataclasses.dataclass(eq=False)
 class TextField(CharField):
@@ -268,6 +268,10 @@ def field(
         enum=enum,
         **extras,
     )
+
+
+def ft(filed: typing.Any) -> Field:
+    return filed
 
 
 @dataclasses.dataclass

@@ -20,6 +20,7 @@ from .model import (
     TextField,
     TimeField,
     field,
+    ft,
 )
 
 __all__ = (
@@ -31,6 +32,7 @@ __all__ = (
     "Schema",
     "manage",
     "field",
+    "ft",
     "Field",
     "IntField",
     "TinyIntField",
