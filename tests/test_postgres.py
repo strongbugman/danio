@@ -8,6 +8,7 @@ import random
 import typing
 
 import pytest
+import pytest_asyncio
 
 import danio
 
@@ -45,26 +46,18 @@ class User(danio.Model):
         FEMALE = 1
         OTHER = 2
 
-    id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-    name: str = danio.field(
-        danio.CharField,
-        comment="User name",
-        default=danio.CharField.NoDefault,
-    )
-    age: int = danio.field(danio.IntField)
-    created_at: datetime.datetime = danio.field(
-        danio.DateTimeField,
-        type="timestamp without time zone",
-        comment="when created",
-    )
-    updated_at: datetime.datetime = danio.field(
-        danio.DateTimeField,
-        type="timestamp without time zone",
-        comment="when created",
-    )
-    gender: Gender = danio.field(
-        danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
-    )
+    id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
+    name: typing.Annotated[str, danio.CharField(comment="User name")] = ""
+    age: typing.Annotated[int, danio.IntField] = 0
+    created_at: typing.Annotated[
+        datetime.datetime,
+        danio.DateTimeField(type="timestamp without time zone", comment="when created"),
+    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    updated_at: typing.Annotated[
+        datetime.datetime,
+        danio.DateTimeField(type="timestamp without time zone", comment="when updated"),
+    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    gender: typing.Annotated[Gender, danio.IntField(enum=Gender)] = Gender.MALE
 
     async def after_create(self):
         global user_count
@@ -90,7 +83,7 @@ class User(danio.Model):
             return db if random.randint(1, 10) > 5 else db2
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def database():
     _db = danio.Database(
         f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/",
@@ -265,11 +258,11 @@ async def test_sql():
 
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(danio.IntField)
-        level: int = danio.field(danio.IntField)
+        id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        level: typing.Annotated[int, danio.IntField] = 0
 
-        _table_unique_keys = ((user_id,),)
+        _table_unique_keys = (("user_id",),)
 
         @classmethod
         def get_database(
@@ -391,11 +384,11 @@ async def test_bulk_operations():
 async def test_combo_operations():
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(danio.IntField)
-        level: int = danio.field(danio.IntField)
+        id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        level: typing.Annotated[int, danio.IntField] = 0
 
-        _table_unique_keys = ((user_id,),)
+        _table_unique_keys = (("user_id",),)
 
         @classmethod
         def get_database(
@@ -456,12 +449,12 @@ async def test_combo_operations():
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(field_cls=danio.IntField, comment="user id")
-        level: int = danio.field(field_cls=danio.IntField, comment="user level")
-        coins: int = danio.field(field_cls=danio.IntField, comment="user coins")
+        id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        level: typing.Annotated[int, danio.IntField] = 0
+        coins: typing.Annotated[int, danio.IntField] = 0
 
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
         _table_index_keys: typing.ClassVar = (
             (
                 User.created_at,
@@ -492,8 +485,8 @@ async def test_schema():
 
     @dataclasses.dataclass
     class BaseUserBackpack(User):
-        user_id: int = danio.field(field_cls=danio.IntField)
-        weight: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
         _table_abstracted: typing.ClassVar[bool] = True
 
@@ -504,14 +497,14 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = danio.field(field_cls=danio.IntField, type="serial", primary=True)
+        pk: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
 
     # db name
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
-        weight: int = danio.field(field_cls=danio.IntField)
+        id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
+        user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
     sql = UserBackpack2.schema.to_sql(type=db.type)
     assert "user_id2" in sql
@@ -531,9 +524,9 @@ async def test_schema():
 
     @dataclasses.dataclass
     class UserBackpack3(BaseUserBackpack):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
-        weight: int = danio.field(field_cls=danio.IntField)
+        id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
+        user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
         _table_index_keys = (("wrong_id"),)
 
@@ -545,12 +538,12 @@ async def test_schema():
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(field_cls=danio.IntField)
-        level: int = danio.field(field_cls=danio.IntField, default=1)
-        coins: int = danio.field(field_cls=danio.IntField)
+        id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
+        user_id: typing.Annotated[int, danio.IntField()] = 0
+        coins: typing.Annotated[int, danio.IntField()] = 0
+        level: typing.Annotated[int, danio.IntField()] = 0
 
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
         _table_index_keys: typing.ClassVar = (
             (
                 User.created_at,
@@ -613,10 +606,10 @@ async def test_migrate():
 async def test_manage():
     @dataclasses.dataclass
     class UserProfile(User):
-        id: int = danio.field(danio.IntField, primary=True, default=0, type="serial")
-        user_id: int = danio.field(field_cls=danio.IntField)
-        level: int = danio.field(field_cls=danio.IntField, default=1)
-        coins: int = danio.field(field_cls=danio.IntField)
+        id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
+        user_id: typing.Annotated[int, danio.IntField()] = 0
+        coins: typing.Annotated[int, danio.IntField()] = 0
+        level: typing.Annotated[int, danio.IntField()] = 1
 
     # generate all
     assert not await danio.manage.make_migration(db, [User], "./tests/migrations")

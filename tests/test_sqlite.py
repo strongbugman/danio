@@ -5,6 +5,7 @@ import os
 import typing
 
 import pytest
+import pytest_asyncio
 
 import danio
 
@@ -21,18 +22,17 @@ class User(danio.Model):
         FEMALE = 1
         OTHER = 2
 
-    id: int = danio.field(
-        danio.IntField, primary=True, auto_increment=True, default=0, type="INTEGER"
-    )
-    name: str = danio.field(danio.CharField, type="CHAR(255)")
-    age: int = danio.field(danio.IntField)
-    gender: Gender = danio.field(
-        danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
-    )
-    _table_index_keys = ((name,),)
+    id: typing.Annotated[
+        int,
+        danio.IntField(primary=True, auto_increment=True, default=0, type="INTEGER"),
+    ] = 0
+    name: typing.Annotated[str, danio.CharField(type="CHAR(255)")] = ""
+    age: typing.Annotated[int, danio.IntField] = 0
+    gender: typing.Annotated[Gender, danio.IntField(enum=Gender)] = Gender.MALE
+    _table_index_keys = (("name",),)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def database():
     await db.connect()
     if not os.path.exists(os.path.join("tests", "migrations")):
@@ -223,13 +223,16 @@ async def test_bulk_operations():
 async def test_combo_operations():
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        id: int = danio.field(
-            danio.IntField, primary=True, auto_increment=True, default=0, type="INTEGER"
-        )
-        user_id: int = danio.field(danio.IntField, type="INTEGER")
-        level: int = danio.field(danio.IntField, type="INTEGER")
+        id: typing.Annotated[
+            int,
+            danio.IntField(
+                primary=True, auto_increment=True, default=0, type="INTEGER"
+            ),
+        ] = 0
+        user_id: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
+        level: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
 
-        _table_unique_keys = ((user_id,),)
+        _table_unique_keys = (("user_id",),)
 
         @classmethod
         def get_database(
@@ -289,11 +292,11 @@ async def test_combo_operations():
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = danio.field(field_cls=danio.IntField, type="INTEGER")
-        level: int = danio.field(field_cls=danio.IntField, type="INTEGER")
-        coins: int = danio.field(field_cls=danio.IntField, type="INTEGER")
+        user_id: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
+        level: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
+        coins: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
 
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
         _table_index_keys: typing.ClassVar = (
             (
                 User.gender,
@@ -325,11 +328,11 @@ async def test_migrate():
 
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = danio.field(field_cls=danio.IntField, type="INTEGER")
-        level: int = danio.field(field_cls=danio.IntField, default=1, type="INTEGER")
-        coins: int = danio.field(field_cls=danio.IntField, type="INTEGER")
+        user_id: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
+        level: typing.Annotated[int, danio.IntField(type="INTEGER")] = 1
+        coins: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
 
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
         _table_index_keys: typing.ClassVar = (
             (
                 User.gender,

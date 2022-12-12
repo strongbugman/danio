@@ -45,7 +45,8 @@ class Field:
 
     name: str = ""
     model_name: str = ""
-    default: typing.Any = NoDefault  # for model layer
+    default: typing.Any = NoDefault
+    _default: typing.Any = NoDefault
     type: str = ""
     primary: bool = False
     auto_increment: bool = False
@@ -55,10 +56,13 @@ class Field:
 
     @property
     def default_value(self) -> typing.Any:
-        if callable(self.default):
-            return self.default()
-        else:
-            return copy.copy(self.default)
+        if self._default is self.NoDefault:
+            if callable(self.default):
+                self._default = self.default()
+            else:
+                self._default = copy.copy(self.default)
+
+        return self._default
 
     def __post_init__(self):
         if not self.type and self.TYPE:
@@ -177,7 +181,7 @@ class BigIntField(IntField):
 
 
 @dataclasses.dataclass(eq=False)
-class FLoatField(Field):
+class FloatField(Field):
     TYPE: typing.ClassVar[str] = "float"
 
     default: float = 0
@@ -400,18 +404,32 @@ class Schema:
     @classmethod
     def from_model(cls: typing.Type[SCHEMA_TV], m: typing.Type[Model]) -> SCHEMA_TV:
         schema = cls(name=m.table_name, model=m)
-        schema.abstracted = m.__dict__.get("_table_abstracted", False)
+        schema.abstracted = m.table_abstracted
         # fields
         for f in dataclasses.fields(m):
-            if isinstance(f.default, Field):
+            if isinstance(f.default, Field):  # from dataclass default
                 f.default.model_name = f.name
                 if not f.default.name:
                     f.default.name = f.name
                     f.default.__post_init__()
                 schema.fields.append(f.default)
+            if hint := typing.get_type_hints(m, include_extras=True).get(
+                f.name
+            ):  # from Annotated
+                for meta in getattr(hint, "__metadata__", ()):
+                    if type(meta) is type and issubclass(meta, Field):
+                        meta = meta()
+                    if isinstance(meta, Field):
+                        meta.model_name = f.name
+                        if not meta.name:
+                            meta.name = f.name
+                            meta.__post_init__()
+                        meta.default = f.default
+                        schema.fields.append(meta)
+                        setattr(m, f.name, meta)
         fields = {f.model_name: f for f in schema.fields}
         # index
-        for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):
+        for i, index_keys in enumerate((m.table_index_keys, m.table_unique_keys)):
             for keys in index_keys:
                 if keys:
                     _fields = []
@@ -660,7 +678,7 @@ class Model:
         "database"
     )
 
-    id: int = field(IntField, primary=True, auto_increment=True)
+    id: typing.Annotated[int, IntField(primary=True, auto_increment=True)] = 0
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
     _table_name_prefix: typing.ClassVar[str] = ""
@@ -673,13 +691,28 @@ class Model:
     ] = tuple()
     _table_abstracted: typing.ClassVar[
         bool
-    ] = True  # do not impact subclass, default false for every class except defined as true
+    ] = True  # do not impact subclass, default false for every child class except defined as true
     _schema: typing.ClassVar[typing.Optional[Schema]] = None
 
     @class_property
     @classmethod
     def table_name(cls) -> str:
         return cls.get_table_name()
+
+    @class_property
+    @classmethod
+    def table_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+        return cls.get_table_index_keys()
+
+    @class_property
+    @classmethod
+    def table_unique_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+        return cls.get_table_unique_keys()
+
+    @class_property
+    @classmethod
+    def table_abstracted(cls) -> bool:
+        return cls.__dict__.get("_table_abstracted", False)
 
     @class_property
     @classmethod
@@ -941,6 +974,14 @@ class Model:
             return prefix + cls.__name__.lower()
 
     @classmethod
+    def get_table_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+        return cls._table_index_keys
+
+    @classmethod
+    def get_table_unique_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+        return cls._table_unique_keys
+
+    @classmethod
     def get_database(
         cls, operation: Operation, table: str, *args, **kwargs
     ) -> Database:
@@ -1168,6 +1209,7 @@ class SQLMarker:
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         """For _parse method"""
+        return ""
 
 
 @dataclasses.dataclass

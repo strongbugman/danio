@@ -71,6 +71,19 @@ Danio provide fields for now(It's easy to define custom field too):
 * TimeField, DateField, DateTimeField
 * JsonField(actually use varchar in database by default)
 
+Or using `typing.Annotated`(**Required in python3.11**)
+
+```python
+import typing
+import dataclasses
+import danio
+
+@dataclasses.dataclass
+class Cat(danio.Model):
+    id: typing.Annotated[int, danio.IntField(primary=True, auto_increment=True)] = 0
+    name: typing.Annotated[int, danio.CharField(comment="cat name")] = 0
+    age: typing.Annotated[int, danio.IntField] = 0
+```
 ## Index
 
 Danio store index information in model's classvar `_table_*_keys`, eg:
@@ -88,6 +101,25 @@ class UserProfile(danio.Model):
         typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]
     ] = (("user_id",),)
 ```
+
+or
+
+
+```python
+@dataclasses.dataclass
+class UserProfile(danio.Model):
+    user_id: typing.Annotated[int, danio.IntField] = 0
+    level: typing.Annotated[int, danio.IntField] = 0
+
+    @classmethod
+    def get_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]:
+        return ((level, user_id,),)
+
+    @classmethod
+    def get_unique_keys(cls) -> typing.Tuple[typing.Tuple[typing.Union[Field, str], ...], ...]:
+        return (("user_id",),)
+```
+
 
 There are the corresponding database table schema:
 
