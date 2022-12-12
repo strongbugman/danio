@@ -45,7 +45,8 @@ class Field:
 
     name: str = ""
     model_name: str = ""
-    default: typing.Any = NoDefault  # for model layer
+    default: typing.Any = NoDefault
+    _default: typing.Any = NoDefault
     type: str = ""
     primary: bool = False
     auto_increment: bool = False
@@ -55,10 +56,13 @@ class Field:
 
     @property
     def default_value(self) -> typing.Any:
-        if callable(self.default):
-            return self.default()
-        else:
-            return copy.copy(self.default)
+        if self._default is self.NoDefault:
+            if callable(self.default):
+                self._default = self.default()
+            else:
+                self._default = copy.copy(self.default)
+
+        return self._default
 
     def __post_init__(self):
         if not self.type and self.TYPE:
@@ -403,12 +407,24 @@ class Schema:
         schema.abstracted = m.__dict__.get("_table_abstracted", False)
         # fields
         for f in dataclasses.fields(m):
-            if isinstance(f.default, Field):
+            if isinstance(f.default, Field):  # from dataclass default
                 f.default.model_name = f.name
                 if not f.default.name:
                     f.default.name = f.name
                     f.default.__post_init__()
                 schema.fields.append(f.default)
+            if hint := typing.get_type_hints(m, include_extras=True).get(
+                f.name
+            ):  # from Annotated
+                for meta in getattr(hint, "__metadata__", ()):
+                    if isinstance(meta, Field):
+                        meta.model_name = f.name
+                        if not meta.name:
+                            meta.name = f.name
+                            meta.__post_init__()
+                        meta.default = f.default
+                        schema.fields.append(meta)
+                        setattr(m, f.name, meta)
         fields = {f.model_name: f for f in schema.fields}
         # index
         for i, index_keys in enumerate((m._table_index_keys, m._table_unique_keys)):
@@ -660,7 +676,7 @@ class Model:
         "database"
     )
 
-    id: int = field(IntField, primary=True, auto_increment=True)
+    id: typing.Annotated[int, IntField(primary=True, auto_increment=True)] = 0
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
     _table_name_prefix: typing.ClassVar[str] = ""
@@ -1168,6 +1184,7 @@ class SQLMarker:
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         """For _parse method"""
+        return ""
 
 
 @dataclasses.dataclass

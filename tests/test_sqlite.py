@@ -5,6 +5,7 @@ import os
 import typing
 
 import pytest
+import pytest_asyncio
 
 import danio
 
@@ -32,7 +33,7 @@ class User(danio.Model):
     _table_index_keys = ((name,),)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def database():
     await db.connect()
     if not os.path.exists(os.path.join("tests", "migrations")):

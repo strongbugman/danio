@@ -8,6 +8,7 @@ import os
 import typing
 
 import pytest
+import pytest_asyncio
 
 import danio
 
@@ -38,11 +39,7 @@ class User(danio.Model):
         FEMALE = 1
         OTHER = 2
 
-    name: str = danio.field(
-        danio.CharField,
-        comment="User name",
-        default=danio.CharField.NoDefault,
-    )
+    name: typing.Annotated[str, danio.CharField(comment="User name")] = ""
     age: int = danio.field(danio.IntField)
     created_at: datetime.datetime = danio.field(
         danio.DateTimeField,
@@ -81,7 +78,7 @@ class User(danio.Model):
             return db
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def database():
     await db.connect()
     await read_db.connect()

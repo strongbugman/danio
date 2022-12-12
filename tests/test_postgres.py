@@ -8,6 +8,7 @@ import random
 import typing
 
 import pytest
+import pytest_asyncio
 
 import danio
 
@@ -90,7 +91,7 @@ class User(danio.Model):
             return db if random.randint(1, 10) > 5 else db2
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def database():
     _db = danio.Database(
         f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/",
