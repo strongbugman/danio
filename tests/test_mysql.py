@@ -40,19 +40,14 @@ class User(danio.Model):
         OTHER = 2
 
     name: typing.Annotated[str, danio.CharField(comment="User name")] = ""
-    age: int = danio.field(danio.IntField)
-    created_at: datetime.datetime = danio.field(
-        danio.DateTimeField,
-        comment="when created",
-    )
-    updated_at: datetime.datetime = danio.field(
-        danio.DateTimeField,
-        comment="when created",
-    )
-    gender: Gender = danio.field(
-        danio.IntField, enum=Gender, default=Gender.MALE, not_null=False
-    )
-    _table_index_keys = ((created_at,),)
+    age: typing.Annotated[int, danio.IntField()] = 0
+    created_at: typing.Annotated[
+        datetime.datetime, danio.DateTimeField(comment="when created")
+    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    updated_at: typing.Annotated[
+        datetime.datetime, danio.DateTimeField(comment="when updated")
+    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    gender: typing.Annotated[Gender, danio.IntField(enum=Gender)] = Gender.MALE
 
     async def after_create(self):
         global user_count
@@ -76,6 +71,10 @@ class User(danio.Model):
             return read_db
         else:
             return db
+
+    @classmethod
+    def get_table_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+        return ((cls.created_at,),)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -265,10 +264,10 @@ async def test_sql():
 
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        user_id: int = danio.field(danio.IntField)
-        level: int = danio.field(danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        level: typing.Annotated[int, danio.IntField] = 0
 
-        _table_unique_keys = ((user_id,),)
+        _table_unique_keys = (("user_id",),)
 
         @classmethod
         def get_database(
@@ -364,22 +363,32 @@ async def test_complicated_update():
 async def test_field():
     @dataclasses.dataclass
     class Table(danio.Model):
-        fsint: int = danio.field(field_cls=danio.SmallIntField)
-        fint: int = danio.field(field_cls=danio.IntField)
-        fbint: int = danio.field(field_cls=danio.BigIntField)
-        ftint: int = danio.field(field_cls=danio.TinyIntField)
-        fbool: int = danio.field(field_cls=danio.BoolField)
-        ffloat: int = danio.field(field_cls=danio.FLoatField)
-        fdecimal: decimal.Decimal = danio.field(field_cls=danio.DecimalField)
-        fchar: str = danio.field(field_cls=danio.CharField)
-        ftext: str = danio.field(field_cls=danio.TextField)
-        ftime: datetime.timedelta = danio.field(field_cls=danio.TimeField)
-        fdate: datetime.date = danio.field(field_cls=danio.DateField)
-        fdatetime: datetime.datetime = danio.field(field_cls=danio.DateTimeField)
-        fjson1: typing.List[int] = danio.field(field_cls=danio.JsonField, default=[])
-        fjson2: typing.Dict[str, int] = danio.field(
-            field_cls=danio.JsonField, default=dict
+        fsint: typing.Annotated[int, danio.SmallIntField] = 0
+        fint: typing.Annotated[int, danio.IntField] = 0
+        fbint: typing.Annotated[int, danio.BigIntField] = 0
+        ftint: typing.Annotated[int, danio.TinyIntField] = 0
+        fbool: typing.Annotated[int, danio.BoolField] = 0
+        ffloat: typing.Annotated[int, danio.FloatField] = 0
+        fdecimal: typing.Annotated[
+            decimal.Decimal, danio.DecimalField
+        ] = decimal.Decimal(0)
+        fchar: typing.Annotated[str, danio.CharField] = ""
+        ftext: typing.Annotated[str, danio.TextField] = ""
+        ftime: typing.Annotated[
+            datetime.timedelta, danio.TimeField
+        ] = datetime.timedelta()
+        fdate: typing.Annotated[datetime.date, danio.DateField] = dataclasses.field(
+            default_factory=lambda: datetime.datetime.now().date()
         )
+        fdatetime: typing.Annotated[
+            datetime.datetime, danio.DateTimeField
+        ] = dataclasses.field(default_factory=datetime.datetime.now)
+        fjson1: typing.Annotated[typing.List[int], danio.JsonField] = dataclasses.field(
+            default_factory=list
+        )
+        fjson2: typing.Annotated[
+            typing.Dict[str, int], danio.JsonField
+        ] = dataclasses.field(default_factory=dict)
 
         @classmethod
         def get_database(cls, *args, **kwargs) -> danio.Database:
@@ -491,10 +500,10 @@ async def test_bulk_operations():
 async def test_combo_operations():
     @dataclasses.dataclass
     class UserProfile(danio.Model):
-        user_id: int = danio.field(danio.IntField)
-        level: int = danio.field(danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        level: typing.Annotated[int, danio.IntField] = 0
 
-        _table_unique_keys = ((user_id,),)
+        _table_unique_keys = (("user_id",),)
 
         @classmethod
         def get_database(
@@ -553,18 +562,23 @@ async def test_combo_operations():
 async def test_schema():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = danio.field(field_cls=danio.IntField, comment="user id")
-        level: int = danio.field(field_cls=danio.IntField, comment="user level")
-        coins: int = danio.field(field_cls=danio.IntField, comment="user coins")
+        user_id: typing.Annotated[int, danio.IntField(comment="user id")] = 0
+        level: typing.Annotated[int, danio.IntField(comment="user level")] = 0
+        coins: typing.Annotated[int, danio.IntField(comment="user coins")] = 0
 
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
-        _table_index_keys: typing.ClassVar = (
-            (
-                User.created_at,
-                User.updated_at,
-            ),
-            ("level",),
-        )
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
+
+        @classmethod
+        def get_table_index_keys(
+            cls,
+        ) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+            return (
+                (
+                    User.created_at,
+                    User.updated_at,
+                ),
+                ("level",),
+            )
 
     # assert danio.Schema.from_model(UserProfile) == UserProfile.schema
     await db.execute(UserProfile.schema.to_sql())
@@ -576,8 +590,8 @@ async def test_schema():
 
     @dataclasses.dataclass
     class BaseUserBackpack(User):
-        user_id: int = danio.field(field_cls=danio.IntField)
-        weight: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
         _table_abstracted: typing.ClassVar[bool] = True
 
@@ -588,15 +602,13 @@ async def test_schema():
     @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
-        pk: int = danio.field(
-            field_cls=danio.IntField, auto_increment=True, primary=True
-        )
+        pk: typing.Annotated[int, danio.IntField(auto_increment=True, primary=True)] = 0
 
     # db name
     @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
-        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
-        weight: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
     sql = UserBackpack2.schema.to_sql()
     assert "user_id2" in sql
@@ -610,10 +622,14 @@ async def test_schema():
 
     @dataclasses.dataclass
     class UserBackpack3(BaseUserBackpack):
-        user_id: int = danio.field(field_cls=danio.IntField, name="user_id2")
-        weight: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
+        weight: typing.Annotated[int, danio.IntField] = 0
 
-        _table_index_keys = (("wrong_id"),)
+        @classmethod
+        def get_table_index_keys(
+            cls,
+        ) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+            return (("wrong id",),)
 
     with pytest.raises(danio.SchemaException):
         danio.Schema.from_model(UserBackpack3)
@@ -623,19 +639,24 @@ async def test_schema():
 async def test_migrate():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = danio.field(field_cls=danio.IntField)
-        level: int = danio.field(field_cls=danio.IntField, default=1)
-        coins: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField(comment="user id")] = 0
+        level: typing.Annotated[int, danio.IntField(comment="user level")] = 1
+        coins: typing.Annotated[int, danio.IntField(comment="user coins")] = 0
 
         _table_name_snake_case: typing.ClassVar[bool] = True
-        _table_unique_keys: typing.ClassVar = ((user_id,),)
-        _table_index_keys: typing.ClassVar = (
-            (
-                User.created_at,
-                User.updated_at,
-            ),
-            ("level",),
-        )
+        _table_unique_keys: typing.ClassVar = (("user_id",),)
+
+        @classmethod
+        def get_table_index_keys(
+            cls,
+        ) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
+            return (
+                (
+                    User.created_at,
+                    User.updated_at,
+                ),
+                ("level",),
+            )
 
     await db.execute((UserProfile.schema - None).to_sql())
     await db.execute(
@@ -682,9 +703,9 @@ async def test_migrate():
 async def test_manage():
     @dataclasses.dataclass
     class UserProfile(User):
-        user_id: int = danio.field(field_cls=danio.IntField)
-        level: int = danio.field(field_cls=danio.IntField, default=1)
-        coins: int = danio.field(field_cls=danio.IntField)
+        user_id: typing.Annotated[int, danio.IntField(comment="user id")] = 0
+        level: typing.Annotated[int, danio.IntField(comment="user level")] = 1
+        coins: typing.Annotated[int, danio.IntField(comment="user coins")] = 0
 
     # generate all
     assert not await danio.manage.make_migration(db, [User], "./tests/migrations")
