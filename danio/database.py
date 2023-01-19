@@ -11,12 +11,12 @@ class Database(_Database):
         POSTGRES = "postgres"
         SQLITE = "sqlite"
 
-        @property
-        def quote(self) -> str:
+        def quote(self, content: str) -> str:
+            qt = "`"
             if self == self.POSTGRES:
-                return '"'
-            else:
-                return "`"
+                qt = '"'
+
+            return f"{qt}{content}{qt}"
 
     SUPPORTED_BACKENDS = {
         "mysql": "danio.mysql:MySQLBackend",

@@ -11,6 +11,7 @@ test: install
 	flake8 .
 	mypy --ignore-missing-imports danio
 	pytest --cov danio --cov-report term-missing
+	black .
 
 tag: install
 	git tag $(version) -m "Release of version $(version)"
