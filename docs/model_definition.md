@@ -1,6 +1,6 @@
 # Define Model
 
-Danio use python's dataclasses as model layer.A danio model is basically a `dataclass` with special method and variable.
+Danio use python's dataclasses as model layer.A danio model is basically a `dataclass` instance with special method and variable.
 
 ## Field
 
@@ -71,7 +71,9 @@ Danio provide fields for now(It's easy to define custom field too):
 * TimeField, DateField, DateTimeField
 * JsonField(actually use varchar in database by default)
 
-Or using `typing.Annotated`(**Required in python3.11**)
+### By `typing.Annotated`(**Required in python3.11**)
+
+eg:
 
 ```python
 import typing
@@ -84,6 +86,53 @@ class Cat(danio.Model):
     name: typing.Annotated[int, danio.CharField(comment="cat name")] = 0
     age: typing.Annotated[int, danio.IntField] = 0
 ```
+
+### Class Attribute and Instance Attribute
+
+By `dataclasses` we can access model field by class attribute, eg:
+```python
+user = User()
+User.id  # IntField(...)
+user.id  # 1
+```
+and danio will also generate a upcase class atrribute for distinguish with instance atrribute, eg:
+```python
+User.ID  # IntField(...)
+User.ID == User.id  # True
+```
+event more, you can use danio to auto write model type hints in code, like:
+```python
+await danio.manage.write_model_hints(database, User)
+```
+Then the user model file will be updated like:
+```python
+class User(danio.Model):
+    # --------------------Danio Hints--------------------
+    # TABLE NAME: user
+    # TABLE IS MIGRATED!
+    ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
+    NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL
+    AGE: typing.ClassVar[danio.Field]  # "age" int  NOT NULL
+    CREATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # "created_at" timestamp without time zone  NOT NULL
+    UPDATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # "updated_at" timestamp without time zone  NOT NULL
+    GENDER: typing.ClassVar[danio.Field]  # "gender" int  NOT NULL
+    # --------------------Danio Hints--------------------
+
+    class Gender(enum.Enum):
+        MALE = 0
+        FEMALE = 1
+        OTHER = 2
+
+    id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
+    name: typing.Annotated[str, danio.CharField(comment="User name")] = ""
+    age: typing.Annotated[int, danio.IntField] = 0
+    ...
+```
+
 ## Index
 
 Danio store index information in model's classvar `_table_*_keys`, eg:
@@ -132,7 +181,7 @@ KEY `level_user_id_231_idx` (`level`, `user_id`)
 
 ## Model Inherit
 
-Danio use dataclasses's way to inherit, define a base model first:
+Danio use dataclasses's way to inherit, we can define a base model first:
 ```python
 @dataclasses.dataclass
 class Pet(danio.Model):

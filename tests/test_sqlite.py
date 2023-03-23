@@ -17,6 +17,17 @@ danio.Model.DATABASE.set(db)
 
 @dataclasses.dataclass
 class User(danio.Model):
+    # --------------------Danio Hints--------------------
+    # TABLE NAME: user
+    # TABLE IS MIGRATED!
+    ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT
+    NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
+    AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
+    GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
+    # TABLE INDEX: name_8999_idx(name)
+    # TABLE UNIQUE INDEX: name_id_605_uiq(name,id)
+    # --------------------Danio Hints--------------------
+
     class Gender(enum.Enum):
         MALE = 0
         FEMALE = 1
@@ -30,6 +41,7 @@ class User(danio.Model):
     age: typing.Annotated[int, danio.IntField] = 0
     gender: typing.Annotated[Gender, danio.IntField(enum=Gender)] = Gender.MALE
     _table_index_keys = (("name",),)
+    _table_unique_keys = (("name", "id"),)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -41,6 +53,7 @@ async def database():
         async with db.connection() as connection:
             async with connection._connection._connection.cursor() as cursor:
                 await cursor.executescript(User.schema.to_sql(type=db.type))
+        await danio.manage.init(db, ["tests.test_sqlite"])
         yield db
     finally:
         for f in glob.glob("./tests/migrations/*.sql"):
@@ -61,7 +74,7 @@ async def test_sql():
     await u.save(force_insert=True)
     assert u.id == 10
     # read
-    assert await User.where(User.id == u.id).fetch_one()
+    assert await User.where(User.ID == u.id).fetch_one()
     assert await User.where(raw=f"id = {u.id}").fetch_one()
     # read with limit
     assert await User.where(User.id == u.id).limit(1).fetch_all()
@@ -236,7 +249,7 @@ async def test_combo_operations():
 
         @classmethod
         def get_database(
-            cls, operation: danio.Operation, table: str, *args, **kwargs
+            cls, operation: danio.Operation, *args, **kwargs
         ) -> danio.Database:
             return db
 
@@ -328,6 +341,20 @@ async def test_migrate():
 
     @dataclasses.dataclass
     class UserProfile(User):
+        # --------------------Danio Hints--------------------
+        # TABLE NAME: userprofile
+        # TABLE IS NOT MIGRATED!
+        ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT
+        NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
+        AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
+        GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
+        USER_ID: typing.ClassVar[danio.Field]  # `user_id` INTEGER   NOT NULL
+        LEVEL: typing.ClassVar[danio.Field]  # `level` INTEGER   NOT NULL
+        COINS: typing.ClassVar[danio.Field]  # `coins` INTEGER   NOT NULL
+        # TABLE INDEX: (gender,age)
+        # TABLE INDEX: (level)
+        # TABLE UNIQUE INDEX: (user_id)
+        # --------------------Danio Hints--------------------
         user_id: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
         level: typing.Annotated[int, danio.IntField(type="INTEGER")] = 1
         coins: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
@@ -389,3 +416,6 @@ async def test_migrate():
     assert not m.drop_indexes
     # drop table
     await db.execute((~(UserProfile.schema - None)).to_sql())
+    await danio.manage.write_model_hints(db, UserProfile)
+    for m in danio.manage.get_models(["tests.test_sqlite"]):
+        await danio.manage.write_model_hints(db, m)

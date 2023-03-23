@@ -2,6 +2,9 @@ from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
 from .model import (
+    Model,
+)
+from .schema import (
     Operation,
     CharField,
     DateField,
@@ -15,7 +18,6 @@ from .model import (
     BigIntField,
     BoolField,
     JsonField,
-    Model,
     Schema,
     TextField,
     TimeField,

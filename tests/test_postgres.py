@@ -41,6 +41,21 @@ user_count = 0
 
 @dataclasses.dataclass
 class User(danio.Model):
+    # --------------------Danio Hints--------------------
+    # TABLE NAME: user
+    # TABLE IS MIGRATED!
+    ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
+    NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL
+    AGE: typing.ClassVar[danio.Field]  # "age" int  NOT NULL
+    CREATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # "created_at" timestamp without time zone  NOT NULL
+    UPDATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # "updated_at" timestamp without time zone  NOT NULL
+    GENDER: typing.ClassVar[danio.Field]  # "gender" int  NOT NULL
+    # --------------------Danio Hints--------------------
+
     class Gender(enum.Enum):
         MALE = 0
         FEMALE = 1
@@ -75,7 +90,7 @@ class User(danio.Model):
 
     @classmethod
     def get_database(
-        cls, operation: danio.Operation, table: str, *args, **kwargs
+        cls, operation: danio.Operation, *args, **kwargs
     ) -> danio.Database:
         if operation == danio.Operation.READ:
             return read_db if random.randint(1, 10) > 5 else read_db2
@@ -105,6 +120,7 @@ async def database():
         for sql in danio.Schema.from_model(User).to_sql(type=db.type).split(";"):
             if sql:
                 await db.execute(sql + ";")
+        await danio.manage.init(db, ["tests.test_postgres"])
         yield db
     finally:
         await db.disconnect()
@@ -138,10 +154,10 @@ async def test_sql():
     with pytest.raises(danio.ValidateException):
         await User().save()
     # read
-    assert await User.where(User.id == u.id).fetch_one()
+    assert await User.where(User.ID == u.id).fetch_one()
     assert await User.where(raw=f"id = {u.id}").fetch_one()
     # read with limit
-    assert await User.where(User.id == u.id).limit(1).fetch_all()
+    assert await User.where(User.ID == u.id).limit(1).fetch_all()
     # read with order by
     assert await User.where().limit(1).order_by(User.name, asc=False).fetch_one()
     assert (
@@ -150,7 +166,7 @@ async def test_sql():
     assert (
         await User.where()
         .limit(1)
-        .order_by(User.name, User.id - 1, asc=False)
+        .order_by(User.NAME, User.ID - 1, asc=False)
         .fetch_one()
     )
     assert (
@@ -218,17 +234,17 @@ async def test_sql():
     assert u.name == "test_user"
     # multi where condition
     assert await User.where(
-        ((User.id != 1) | (User.name != "")) & (User.gender == User.Gender.MALE)
+        ((User.ID != 1) | (User.NAME != "")) & (User.GENDER == User.Gender.MALE)
     ).fetch_all()
-    assert await User.where(User.id != 1, User.name != "", is_and=False).fetch_all()
+    assert await User.where(User.ID != 1, User.NAME != "", is_and=False).fetch_all()
     assert (
-        not await User.where(User.id != 1, User.name != "", is_and=False)
-        .where(User.gender == User.Gender.FEMALE)
+        not await User.where(User.ID != 1, User.NAME != "", is_and=False)
+        .where(User.GENDER == User.Gender.FEMALE)
         .fetch_all()
     )
-    assert await User.where(User.name.like("test_%")).fetch_all()
+    assert await User.where(User.NAME.like("test_%")).fetch_all()
     assert await User.where(
-        User.gender.contains([g.value for g in User.Gender])
+        User.GENDER.contains([g.value for g in User.Gender])
     ).fetch_all()
     # combine condition
     u = await User.where().fetch_one()
@@ -266,7 +282,7 @@ async def test_sql():
 
         @classmethod
         def get_database(
-            cls, operation: danio.Operation, table: str, *args, **kwargs
+            cls, operation: danio.Operation, *args, **kwargs
         ) -> danio.Database:
             if operation == danio.Operation.READ:
                 return read_db
@@ -392,7 +408,7 @@ async def test_combo_operations():
 
         @classmethod
         def get_database(
-            cls, operation: danio.Operation, table: str, *args, **kwargs
+            cls, operation: danio.Operation, *args, **kwargs
         ) -> danio.Database:
             if operation == danio.Operation.READ:
                 return read_db
@@ -606,6 +622,23 @@ async def test_migrate():
 async def test_manage():
     @dataclasses.dataclass
     class UserProfile(User):
+        # --------------------Danio Hints--------------------
+        # TABLE NAME: userprofile
+        # TABLE IS NOT MIGRATED!
+        ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
+        NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL
+        AGE: typing.ClassVar[danio.Field]  # "age" int  NOT NULL
+        CREATED_AT: typing.ClassVar[
+            danio.Field
+        ]  # "created_at" timestamp without time zone  NOT NULL
+        UPDATED_AT: typing.ClassVar[
+            danio.Field
+        ]  # "updated_at" timestamp without time zone  NOT NULL
+        GENDER: typing.ClassVar[danio.Field]  # "gender" int  NOT NULL
+        USER_ID: typing.ClassVar[danio.Field]  # "user_id" int  NOT NULL
+        COINS: typing.ClassVar[danio.Field]  # "coins" int  NOT NULL
+        LEVEL: typing.ClassVar[danio.Field]  # "level" int  NOT NULL
+        # --------------------Danio Hints--------------------
         id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
         user_id: typing.Annotated[int, danio.IntField()] = 0
         coins: typing.Annotated[int, danio.IntField()] = 0
@@ -615,4 +648,6 @@ async def test_manage():
     assert not await danio.manage.make_migration(db, [User], "./tests/migrations")
     assert await danio.manage.make_migration(db, [UserProfile], "./tests/migrations")
     # get models
-    assert danio.manage.get_models(["tests"])
+    await danio.manage.write_model_hints(db, UserProfile)
+    for m in danio.manage.get_models(["tests.test_postgres"]):
+        await danio.manage.write_model_hints(db, m)
