@@ -651,3 +651,4 @@ async def test_manage():
     await danio.manage.write_model_hints(db, UserProfile)
     for m in danio.manage.get_models(["tests.test_postgres"]):
         await danio.manage.write_model_hints(db, m)
+        await danio.manage.show_model_define(db, m.schema.name)

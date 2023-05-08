@@ -48,3 +48,14 @@ def find_classes(
                 models.add(obj)
 
     return models
+
+
+def contains(source: str, subs: typing.Sequence[str], case_ignore: bool = True) -> bool:
+    if case_ignore:
+        source = source.lower()
+        subs = tuple(sub.lower() for sub in subs)
+    for sub in subs:
+        if sub in source:
+            return True
+
+    return False

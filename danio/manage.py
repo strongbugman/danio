@@ -117,3 +117,19 @@ async def write_model_hints(
 async def init(db: Database, paths: typing.List[str]) -> None:
     for M in get_models(paths):
         await write_model_hints(db, M)
+
+
+async def show_model_define(
+    db: Database,
+    table: str,
+):
+    schema = await Schema.from_db(db, type("ModelCls", (Model,), {"table_name": table}))
+    if not schema:
+        raise RuntimeError(f"table {table} not founded!")
+    defines = ["@danio.dataclass", f"class {table}(danio.Model):"]
+    for field in schema.fields:
+        defines.append(
+            f'  {field.name}: typing.Annotated[{field.default.__class__.__name__}, danio.{field.__class__.__name__}(type="{field.type}")] = {repr(field.default_value)}'
+        )
+
+    print("\n".join(defines))

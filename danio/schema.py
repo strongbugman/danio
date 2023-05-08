@@ -6,6 +6,7 @@ import decimal
 import enum
 import itertools
 import json
+import logging
 import random
 import re
 import typing
@@ -16,7 +17,7 @@ from functools import reduce
 import cached_property
 import sqlalchemy
 
-from . import exception
+from . import exception, utils
 from .database import Database
 
 if typing.TYPE_CHECKING:
@@ -210,6 +211,20 @@ class TextField(CharField):
     TYPE: typing.ClassVar[str] = "text"
 
     default: str = ""
+
+
+@dataclasses.dataclass(eq=False)
+class BytesField(Field):
+    TYPE: typing.ClassVar[str] = "binary(24)"
+
+    default: bytes = b""
+
+
+@dataclasses.dataclass(eq=False)
+class BlobField(Field):
+    TYPE: typing.ClassVar[str] = "blob"
+
+    default: bytes = b""
 
 
 @dataclasses.dataclass(eq=False)
@@ -461,11 +476,36 @@ class Schema:
         return schema
 
     @classmethod
+    def detect_field_type(cls, _: Database, field_type: str) -> typing.Type[Field]:
+        if utils.contains(field_type, ("json",)):
+            return JsonField
+        elif utils.contains(field_type, ("int", "serial")):
+            return IntField
+        elif utils.contains(field_type, ("boolean",)):
+            return BoolField
+        elif utils.contains(field_type, ("float", "real", "double")):
+            return FloatField
+        elif utils.contains(field_type, ("numeric", "decimal", "money")):  # TODO: money
+            return DecimalField
+        elif utils.contains(field_type, ("binary", "blob", "bytea", "bit")):
+            return BytesField
+        elif utils.contains(field_type, ("date",)):
+            return DateField
+        elif utils.contains(field_type, ("time",)):
+            return TimeField
+        elif utils.contains(field_type, ("datetime", "timestamp")):
+            return DateTimeField
+        elif utils.contains(field_type, ("char", "text", "character", "clob")):
+            return CharField
+        else:
+            return Field
+
+    @classmethod
     async def from_db(
         cls: typing.Type[SCHEMA_TV], database: Database, m: typing.Type[MODEL_TV]
     ) -> typing.Optional[SCHEMA_TV]:
-        schema = cls(name=m.table_name)
-        model_names = {f.name: f.model_name for f in m.schema.fields}
+        schema = cls(name=m.table_name if m else "table")
+        model_names = {f.name: f.model_name for f in m.schema.fields} if m else {}
         if database.type == database.type.MYSQL:
             field_name_pattern = re.compile(r"`([^ ,]*)`")
             try:
@@ -478,6 +518,8 @@ class Schema:
                             if db_name == f.name:
                                 f.primary = True
                                 break
+                    elif "FOREIGN KEY" in line:
+                        logging.warning("FOREIGN KEY not support!")
                     elif "KEY" in line:
                         fields = {f.name: f for f in schema.fields}
                         index_fields = []
@@ -494,10 +536,11 @@ class Schema:
                     else:
                         db_name = field_name_pattern.findall(line)[0]
                         name = model_names.get(db_name, "")
+                        field_type = line.split("`")[-1].split(" ")[1]
                         schema.fields.append(
-                            Field(
+                            cls.detect_field_type(database, field_type)(
                                 name=db_name,
-                                type=line.split("`")[-1].split(" ")[1],
+                                type=field_type,
                                 model_name=name,
                                 auto_increment="AUTO_INCREMENT" in line,
                                 not_null="NOT NULL" in line,
@@ -524,10 +567,11 @@ class Schema:
                             auto_increment = False
                             if "AUTOINCREMENT" in line:
                                 auto_increment = True
+                            field_type = line.split("`")[-1].split(" ")[1]
                             schema.fields.append(
-                                Field(
+                                cls.detect_field_type(database, field_type)(
                                     name=db_name,
-                                    type=line.split("`")[-1].split(" ")[1],
+                                    type=field_type,
                                     model_name=name,
                                     primary=primary,
                                     auto_increment=auto_increment,
@@ -557,7 +601,7 @@ class Schema:
                 else:
                     field_type = field_type
                 schema.fields.append(
-                    Field(
+                    cls.detect_field_type(database, field_type)(
                         name=d["column_name"],
                         model_name=model_names.get(d["column_name"], ""),
                         type=field_type,

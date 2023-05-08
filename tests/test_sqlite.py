@@ -24,8 +24,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_3667_idx(name)
-    # TABLE UNIQUE INDEX: name_id_6721_uiq(name,id)
+    # TABLE INDEX: name_7806_idx(name)
+    # TABLE UNIQUE INDEX: name_id_3639_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -419,3 +419,4 @@ async def test_migrate():
     await danio.manage.write_model_hints(db, UserProfile)
     for m in danio.manage.get_models(["tests.test_sqlite"]):
         await danio.manage.write_model_hints(db, m)
+        await danio.manage.show_model_define(db, m.schema.name)

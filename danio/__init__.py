@@ -1,9 +1,7 @@
 from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
-from .model import (
-    Model,
-)
+from .model import Model
 from .schema import (
     Operation,
     CharField,
@@ -13,6 +11,8 @@ from .schema import (
     FloatField,
     DecimalField,
     IntField,
+    BytesField,
+    BlobField,
     TinyIntField,
     SmallIntField,
     BigIntField,
@@ -42,6 +42,8 @@ __all__ = (
     "FloatField",
     "DecimalField",
     "CharField",
+    "BytesField",
+    "BlobField",
     "TextField",
     "TimeField",
     "DateField",
