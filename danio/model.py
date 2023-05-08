@@ -241,12 +241,8 @@ class Model:
         new = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
         ).fetch_one(fields=fields)
-        db_fields = {f.model_name for f in fields} or {
-            f.model_name for f in self.schema.fields
-        }
         for f in dataclasses.fields(self):
-            if f.name in db_fields:
-                setattr(self, f.name, getattr(new, f.name))
+            setattr(self, f.name, getattr(new, f.name))
         return self
 
     async def get_or_create(

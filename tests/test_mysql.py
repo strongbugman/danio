@@ -38,19 +38,13 @@ class User(danio.Model):
     # TABLE NAME: user
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-    NAME: typing.ClassVar[
-        danio.Field
-    ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+    NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
     AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-    CREATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-    UPDATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+    CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+    UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_2962_idx(created_at)
-    # TABLE INDEX: updated_at_5643_idx(updated_at)
+    # TABLE INDEX: created_at_7895_idx(created_at)
+    # TABLE INDEX: updated_at_7934_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -727,26 +721,14 @@ async def test_manage():
         # TABLE NAME: userprofile
         # TABLE IS NOT MIGRATED!
         ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-        NAME: typing.ClassVar[
-            danio.Field
-        ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+        NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
         AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-        CREATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-        UPDATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+        CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+        UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
         GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-        USER_ID: typing.ClassVar[
-            danio.Field
-        ]  # `user_id` int NOT NULL  COMMENT 'user id'
-        LEVEL: typing.ClassVar[
-            danio.Field
-        ]  # `level` int NOT NULL  COMMENT 'user level'
-        COINS: typing.ClassVar[
-            danio.Field
-        ]  # `coins` int NOT NULL  COMMENT 'user coins'
+        USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT 'user id'
+        LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT 'user level'
+        COINS: typing.ClassVar[danio.Field]  # `coins` int NOT NULL  COMMENT 'user coins'
         # TABLE INDEX: (created_at)
         # TABLE INDEX: (updated_at)
         # --------------------Danio Hints--------------------
