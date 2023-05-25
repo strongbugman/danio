@@ -19,7 +19,7 @@ def get_models(paths: typing.List[str]) -> typing.List[typing.Type[Model]]:
 
 
 async def make_migration(
-    db: Database, models: typing.Sequence[typing.Type[Model]], dir: str
+    db: Database, models: typing.Iterable[typing.Type[Model]], dir: str
 ) -> str:
     """Make migration sql, compare model schema and database schema"""
     sqls = []

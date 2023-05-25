@@ -134,8 +134,8 @@ class Model:
 
     def dump(
         self,
-        fields: typing.Sequence[Field] = (),
-        ignore_fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
+        ignore_fields: typing.Iterable[Field] = (),
     ) -> typing.Dict[str, typing.Any]:
         """Dump model to dict with only database fields"""
         data = {}
@@ -150,8 +150,8 @@ class Model:
     async def create(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = (),
-        ignore_fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
+        ignore_fields: typing.Iterable[Field] = (),
         validate: bool = True,
     ):
         database = (
@@ -179,8 +179,8 @@ class Model:
     async def update(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = (),
-        ignore_fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
+        ignore_fields: typing.Iterable[Field] = (),
         validate: bool = True,
     ) -> bool:
         """
@@ -199,8 +199,8 @@ class Model:
     async def save(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = (),
-        ignore_fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
+        ignore_fields: typing.Iterable[Field] = (),
         force_insert=False,
         validate: bool = True,
     ) -> MODEL_TV:
@@ -236,7 +236,7 @@ class Model:
     async def refetch(
         self: MODEL_TV,
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = tuple(),
+        fields: typing.Iterable[Field] = tuple(),
     ) -> MODEL_TV:
         new = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
@@ -247,9 +247,9 @@ class Model:
 
     async def get_or_create(
         self: MODEL_TV,
-        key_fields: typing.Sequence[Field],
+        key_fields: typing.Iterable[Field],
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
         validate: bool = True,
         for_update: bool = False,
     ) -> typing.Tuple[MODEL_TV, bool]:
@@ -282,10 +282,10 @@ class Model:
 
     async def create_or_update(
         self: MODEL_TV,
-        key_fields: typing.Sequence[Field],
+        key_fields: typing.Iterable[Field],
         database: typing.Optional[Database] = None,
-        fields: typing.Sequence[Field] = (),
-        update_fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
+        update_fields: typing.Iterable[Field] = (),
         for_update: bool = True,
         validate: bool = True,
     ) -> typing.Tuple[MODEL_TV, bool, bool]:
@@ -370,8 +370,8 @@ class Model:
         cls,
         insert_data: typing.List[typing.Dict[str, typing.Any]],
         database: typing.Optional[Database] = None,
-        update_fields: typing.Sequence[str] = (),
-        conflict_targets: typing.Sequence[str] = (),
+        update_fields: typing.Iterable[str] = (),
+        conflict_targets: typing.Iterable[str] = (),
     ) -> typing.Tuple[bool, bool]:
         """
         Using insert on duplicate:
@@ -402,7 +402,7 @@ class Model:
     async def bulk_create(
         cls: typing.Type[MODEL_TV],
         instances: typing.Sequence[MODEL_TV],
-        fields: typing.Sequence[Field] = (),
+        fields: typing.Iterable[Field] = (),
         database: typing.Optional[Database] = None,
         validate: bool = True,
     ) -> typing.Sequence[MODEL_TV]:
@@ -462,11 +462,11 @@ class Model:
     @classmethod
     async def bulk_update(
         cls: typing.Type[MODEL_TV],
-        instances: typing.Sequence[MODEL_TV],
-        fields: typing.Sequence[Field] = (),
+        instances: typing.Iterable[MODEL_TV],
+        fields: typing.Iterable[Field] = (),
         database: typing.Optional[Database] = None,
         validate: bool = True,
-    ) -> typing.Sequence[MODEL_TV]:
+    ) -> typing.Iterable[MODEL_TV]:
         assert cls.schema.primary_field
 
         database = database if database else cls.get_database(Operation.UPDATE)
@@ -489,7 +489,7 @@ class Model:
     @classmethod
     async def bulk_delete(
         cls,
-        instances: typing.Sequence[MODEL_TV],
+        instances: typing.Iterable[MODEL_TV],
         database: typing.Optional[Database] = None,
     ) -> int:
         for ins in instances:
@@ -526,8 +526,8 @@ class SqlChain(schema.Crud, typing.Generic[MODEL_TV]):
 
     async def fetch_all(
         self,
-        fields: typing.Sequence[Field] = tuple(),
-        ignore_fields: typing.Sequence[Field] = tuple(),
+        fields: typing.Iterable[Field] = tuple(),
+        ignore_fields: typing.Iterable[Field] = tuple(),
     ) -> typing.List[MODEL_TV]:
         assert self.model
         self.database = (
@@ -554,8 +554,8 @@ class SqlChain(schema.Crud, typing.Generic[MODEL_TV]):
 
     async def fetch_one(
         self,
-        fields: typing.Sequence[Field] = tuple(),
-        ignore_fields: typing.Sequence[Field] = tuple(),
+        fields: typing.Iterable[Field] = tuple(),
+        ignore_fields: typing.Iterable[Field] = tuple(),
     ) -> typing.Optional[MODEL_TV]:
         assert self.model
         self.database = (
@@ -577,8 +577,8 @@ class SqlChain(schema.Crud, typing.Generic[MODEL_TV]):
 
     async def fetch_row(
         self,
-        fields: typing.Sequence[Field] = tuple(),
-        ignore_fields: typing.Sequence[Field] = tuple(),
+        fields: typing.Iterable[Field] = tuple(),
+        ignore_fields: typing.Iterable[Field] = tuple(),
     ) -> typing.List[Record]:
         assert self.model
         self.database = (

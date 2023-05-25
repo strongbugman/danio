@@ -50,7 +50,7 @@ def find_classes(
     return models
 
 
-def contains(source: str, subs: typing.Sequence[str], case_ignore: bool = True) -> bool:
+def contains(source: str, subs: typing.Iterable[str], case_ignore: bool = True) -> bool:
     if case_ignore:
         source = source.lower()
         subs = tuple(sub.lower() for sub in subs)

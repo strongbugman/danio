@@ -104,7 +104,7 @@ class Field:
     def __truediv__(self, other: object) -> SQLExpression:
         return SQLExpression(field=self, values=[(SQLExpression.Operator.DIV, other)])
 
-    def contains(self, values: typing.Sequence) -> SQLExpression:
+    def contains(self, values: typing.Iterable) -> SQLExpression:
         if not values:
             raise ValueError("Empty values")
 
@@ -975,8 +975,8 @@ class Crud(BaseSQLBuilder):
         self,
         count=False,
         type: Database.Type = Database.Type.MYSQL,
-        fields: typing.Sequence[Field] = tuple(),
-        ignore_fields: typing.Sequence[Field] = tuple(),
+        fields: typing.Iterable[Field] = tuple(),
+        ignore_fields: typing.Iterable[Field] = tuple(),
     ) -> str:
         assert self.schema
 
@@ -1077,8 +1077,8 @@ class Insert(BaseSQLBuilder):
     insert_data: typing.Sequence[typing.Dict[str, str]] = dataclasses.field(
         default_factory=list
     )
-    update_fields: typing.Sequence[str] = dataclasses.field(default_factory=list)
-    conflict_targets: typing.Sequence[str] = dataclasses.field(default_factory=list)
+    update_fields: typing.Iterable[str] = dataclasses.field(default_factory=list)
+    conflict_targets: typing.Iterable[str] = dataclasses.field(default_factory=list)
 
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.insert_data
