@@ -1,5 +1,4 @@
 import asyncio
-import dataclasses
 import datetime
 import decimal
 import enum
@@ -34,25 +33,18 @@ db_name = "test_danio"
 user_count = 0
 
 
-@dataclasses.dataclass
 class User(danio.Model):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user
     # TABLE IS MIGRATED!
-    ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-    NAME: typing.ClassVar[
-        danio.Field
-    ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
-    AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-    CREATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-    UPDATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
-    GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_5176_idx(created_at)
-    # TABLE INDEX: updated_at_7521_idx(updated_at)
+    ID: typing.ClassVar[danio.Field]  # `id` int  AUTO_INCREMENT COMMENT ''
+    NAME: typing.ClassVar[danio.Field]  # `name` varchar(255)   COMMENT 'User name'
+    AGE: typing.ClassVar[danio.Field]  # `age` int   COMMENT ''
+    CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime   COMMENT 'when created'
+    UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime   COMMENT 'when updated'
+    GENDER: typing.ClassVar[danio.Field]  # `gender` int   COMMENT ''
+    # TABLE INDEX: created_at_5280_idx(created_at)
+    # TABLE INDEX: updated_at_3335_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -64,10 +56,10 @@ class User(danio.Model):
     age: typing.Annotated[int, danio.IntField()] = 0
     created_at: typing.Annotated[
         datetime.datetime, danio.DateTimeField(comment="when created")
-    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    ] = danio.field(default=datetime.datetime.now)
     updated_at: typing.Annotated[
         datetime.datetime, danio.DateTimeField(comment="when updated")
-    ] = dataclasses.field(default_factory=datetime.datetime.now)
+    ] = danio.field(default=datetime.datetime.now)
     gender: typing.Annotated[Gender, danio.IntField(enum=Gender)] = Gender.MALE
 
     async def after_create(self):
@@ -178,6 +170,7 @@ async def test_sql():
     assert await User.where().fetch_row()
     # save with special fields only
     u = await User.where().fetch_one()
+    assert u
     u.name = "tester"
     u.gender = u.Gender.OTHER
     u = await u.save(fields=[User.name])
@@ -211,6 +204,7 @@ async def test_sql():
     assert u.name == "admin_user2"
     # read only special field
     u = await User.where().fetch_one(fields=(User.NAME,))
+    assert u
     assert not u.id
     assert u.name
     # read exclude special field
@@ -219,6 +213,7 @@ async def test_sql():
     assert u.name
     # refetch
     u = await User.where().fetch_one()
+    assert u
     await User.where(User.ID == u.id).update(name="user1")
     await u.refetch()
     assert u.name == "user1"
@@ -250,6 +245,7 @@ async def test_sql():
     assert (await User.where().fetch_all(fields=[User.ID]))[0].name == User.name
     # combine condition
     u = await User.where().fetch_one()
+    assert u
     u.age = 2
     await u.save()
     assert await User.where((User.AGE + 1) == 3).fetch_all()
@@ -261,21 +257,24 @@ async def test_sql():
     async with db.transaction():
         for u in await User.where(database=db).fetch_all():
             u.name += "_updated"
-            u.save(fields=[User.name], database=db)
+            await u.save(fields=[User.name], database=db)
     # exclusive lock
     async with db.transaction():
         for u in await User.where(database=db).for_update().fetch_all():
             u.name += "_updated"
-            u.save(fields=[User.name], database=db)
+            await u.save(fields=[User.name], database=db)
     # share lock
     async with db.transaction():
         for u in await User.where(database=db).for_share().fetch_all():
             u.name += "_updated"
-            u.save(fields=[User.NAME], database=db)
+            await u.save(fields=[User.NAME], database=db)
     # use index
     await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
     await User.where().use_index(
-        [list(User.schema.indexes)[0].name, list(User.schema.indexes)[0].name]
+        [
+            list(User.schema.indexes)[0].name,
+            list(User.schema.indexes)[0].name,
+        ]
     ).fetch_all()
     await User.where().ignore_index([list(User.schema.indexes)[0].name]).fetch_all()
     await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
@@ -284,7 +283,6 @@ async def test_sql():
     ).order_by(User.CREATED_AT).fetch_all()
     # upsert
 
-    @dataclasses.dataclass
     class UserProfile(danio.Model):
         user_id: typing.Annotated[int, danio.IntField] = 0
         level: typing.Annotated[int, danio.IntField] = 0
@@ -383,14 +381,13 @@ async def test_complicated_update():
 
 @pytest.mark.asyncio
 async def test_field():
-    @dataclasses.dataclass
     class Table(danio.Model):
         fsint: typing.Annotated[int, danio.SmallIntField] = 0
         fint: typing.Annotated[int, danio.IntField] = 0
         fbint: typing.Annotated[int, danio.BigIntField] = 0
         ftint: typing.Annotated[int, danio.TinyIntField] = 0
         fbool: typing.Annotated[int, danio.BoolField] = 0
-        ffloat: typing.Annotated[int, danio.FloatField] = 0
+        ffloat: typing.Annotated[float, danio.FloatField] = 0
         fdecimal: typing.Annotated[
             decimal.Decimal, danio.DecimalField
         ] = decimal.Decimal(0)
@@ -400,18 +397,18 @@ async def test_field():
         ftime: typing.Annotated[
             datetime.timedelta, danio.TimeField
         ] = datetime.timedelta()
-        fdate: typing.Annotated[datetime.date, danio.DateField] = dataclasses.field(
-            default_factory=lambda: datetime.datetime.now().date()
+        fdate: typing.Annotated[datetime.date, danio.DateField] = danio.field(
+            default=lambda: datetime.datetime.now().date()
         )
         fdatetime: typing.Annotated[
             datetime.datetime, danio.DateTimeField
-        ] = dataclasses.field(default_factory=datetime.datetime.now)
-        fjson1: typing.Annotated[typing.List[int], danio.JsonField] = dataclasses.field(
-            default_factory=list
+        ] = danio.field(default=datetime.datetime.now)
+        fjson1: typing.Annotated[typing.List[int], danio.JsonField] = danio.field(
+            default=list
         )
-        fjson2: typing.Annotated[
-            typing.Dict[str, int], danio.JsonField
-        ] = dataclasses.field(default_factory=dict)
+        fjson2: typing.Annotated[typing.Dict[str, int], danio.JsonField] = danio.field(
+            default=dict
+        )
 
         @classmethod
         def get_database(cls, *args, **kwargs) -> danio.Database:
@@ -437,6 +434,7 @@ async def test_field():
     await t.save()
     # read
     t = await Table.where().fetch_one()
+    assert t
     assert t.fint == 0
     assert t.ftint == 0
     assert not t.fbool
@@ -469,6 +467,7 @@ async def test_field():
     await t.save()
     # read
     t = await Table.where().fetch_one()
+    assert t
     assert t.fint == 1
     assert t.fsint == 1
     assert t.fbint == 1
@@ -517,7 +516,7 @@ async def test_bulk_operations():
     await User.bulk_update(users, fields=(User.NAME,))
     for user in await User.where().fetch_all():
         assert user.name.endswith(f"_updated_{user.id}")
-        assert user.gender == User.gender.default
+        assert user.gender == User.GENDER.default
     # delete
     await User.bulk_delete(users)
     assert not await User.where().fetch_all()
@@ -525,7 +524,6 @@ async def test_bulk_operations():
 
 @pytest.mark.asyncio
 async def test_combo_operations():
-    @dataclasses.dataclass
     class UserProfile(danio.Model):
         user_id: typing.Annotated[int, danio.IntField] = 0
         level: typing.Annotated[int, danio.IntField] = 0
@@ -587,7 +585,6 @@ async def test_combo_operations():
 
 @pytest.mark.asyncio
 async def test_schema():
-    @dataclasses.dataclass
     class UserProfile(User):
         user_id: typing.Annotated[int, danio.IntField(comment="user id")] = 0
         level: typing.Annotated[int, danio.IntField(comment="user level")] = 0
@@ -615,7 +612,6 @@ async def test_schema():
     )
     # abstract class
 
-    @dataclasses.dataclass
     class BaseUserBackpack(User):
         user_id: typing.Annotated[int, danio.IntField] = 0
         weight: typing.Annotated[int, danio.IntField] = 0
@@ -626,13 +622,11 @@ async def test_schema():
     assert BaseUserBackpack.schema.to_sql()
     # disable fields
 
-    @dataclasses.dataclass
     class UserBackpack(BaseUserBackpack):
         id: int = 0
         pk: typing.Annotated[int, danio.IntField(auto_increment=True, primary=True)] = 0
 
     # db name
-    @dataclasses.dataclass
     class UserBackpack2(BaseUserBackpack):
         user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
         weight: typing.Annotated[int, danio.IntField] = 0
@@ -647,7 +641,6 @@ async def test_schema():
     assert not await danio.Schema.from_db(db, UserBackpack)
     # wrong index
 
-    @dataclasses.dataclass
     class UserBackpack3(BaseUserBackpack):
         user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
         weight: typing.Annotated[int, danio.IntField] = 0
@@ -664,7 +657,6 @@ async def test_schema():
 
 @pytest.mark.asyncio
 async def test_migrate():
-    @dataclasses.dataclass
     class UserProfile(User):
         user_id: typing.Annotated[int, danio.IntField(comment="user id")] = 0
         level: typing.Annotated[int, danio.IntField(comment="user level")] = 1
@@ -728,7 +720,6 @@ async def test_migrate():
 
 @pytest.mark.asyncio
 async def test_manage():
-    @dataclasses.dataclass
     class UserProfile(User):
         # --------------------Danio Hints--------------------
         # TABLE NAME: userprofile

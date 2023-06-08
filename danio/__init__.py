@@ -19,10 +19,11 @@ from .schema import (
     BoolField,
     JsonField,
     Schema,
+    Migration,
     TextField,
     TimeField,
-    field,
 )
+from .dataclass import BaseData, field
 
 __all__ = (
     "Database",
@@ -31,6 +32,7 @@ __all__ = (
     "Operation",
     "Model",
     "Schema",
+    "Migration",
     "manage",
     "field",
     "Field",

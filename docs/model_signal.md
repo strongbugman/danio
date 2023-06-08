@@ -15,7 +15,7 @@ Danio support signal during instance's life cycle, all sql operation interact wi
 
 Special signal:
 
-* after_init - called after the instance has been init (call by `__post_init__` actually)
+* after_init - called after the instance has been init (call by `after_init` actually)
 
     `def after_init(self) -> None`
 

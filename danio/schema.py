@@ -13,12 +13,13 @@ import typing
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import reduce
+import typing as tp
 
-import cached_property
 import sqlalchemy
 
 from . import exception, utils
 from .database import Database
+from .dataclass import Field as _Field
 
 if typing.TYPE_CHECKING:
     from .model import MODEL_TV
@@ -36,44 +37,70 @@ def join(*contents, delimiter=" ") -> str:
     return delimiter.join(tuple(filter(lambda c: c, contents)))
 
 
-@dataclasses.dataclass
-class Field:
-    class FieldDefault:
-        pass
-
-    class NoDefault:
-        pass
-
+class Field(_Field):
+    __slots__ = (
+        "name",
+        "type_hint",
+        "default",
+        "model_name",
+        "type",
+        "primary",
+        "auto_increment",
+        "not_null",
+        "comment",
+        "enum"
+    )
+    __copy__fields__ = (
+        "name",
+        "type_hint",
+        "default",
+        "type",
+        "primary",
+        "auto_increment",
+        "not_null",
+        "comment",
+        "enum"
+    )
     TYPE: typing.ClassVar[str] = ""
 
-    name: str = ""
-    model_name: str = ""
-    default: typing.Any = NoDefault
-    _default: typing.Any = NoDefault
-    type: str = ""
-    primary: bool = False
-    auto_increment: bool = False
-    not_null: bool = True
-    comment: str = ""
-    enum: typing.Optional[typing.Type[enum.Enum]] = None
+    def __init__(
+        self,
+        name: str = "",
+        type_hint: tp.Type = object,
+        default: tp.Any = _Field.NoDefault,
+        model_name: str = "",
+        type: str = "",
+        primary: bool = False,
+        auto_increment: bool = False,
+        not_null: bool = False,
+        comment: str = "",
+        enum: tp.Type[enum.Enum] | None = None,
+    ) -> None:
+        super().__init__(name, type_hint, default)
 
+        self.model_name: str = model_name
+        self.type: str = type or self.TYPE
+        self.primary: bool = primary
+        self.auto_increment: bool = auto_increment
+        self.not_null: bool = not_null
+        self.comment: str = comment
+        self.enum = enum
+    
     @property
-    def default_value(self) -> typing.Any:
-        if self._default is self.NoDefault:
-            if callable(self.default):
-                self._default = self.default()
+    def field_name(self) -> str:
+        return self.model_name
+    
+    @property
+    def default_value(self) -> tp.Any:
+        value = super().default_value
+        if self.enum and value is not self.NoDefault:
+            if isinstance(value, self.enum):
+                return value
             else:
-                self._default = copy.copy(self.default)
-
-        return self._default
-
-    def __post_init__(self):
-        if not self.type and self.TYPE:
-            self.type = self.TYPE
-
-        if self.enum and not isinstance(self.default, self.enum):
-            self.default = list(self.enum)[0]
-
+                return self.enum(value)
+        else:
+            return value
+    
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
 
@@ -146,28 +173,24 @@ class Field:
         return value
 
 
-@dataclasses.dataclass(eq=False)
 class IntField(Field):
     TYPE: typing.ClassVar[str] = "int"
 
-    default: int = 0
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class SmallIntField(IntField):
     TYPE: typing.ClassVar[str] = "smallint"
 
 
-@dataclasses.dataclass(eq=False)
 class TinyIntField(IntField):
     TYPE: typing.ClassVar[str] = "tinyint"
 
 
-@dataclasses.dataclass(eq=False)
 class BoolField(Field):
     TYPE: typing.ClassVar[str] = "tinyint"
 
-    default: bool = False
+    DEFAULT: tp.ClassVar[int] = 0
 
     def to_database(self, value: typing.Any) -> typing.Any:
         if isinstance(value, bool):
@@ -180,81 +203,70 @@ class BoolField(Field):
         return super().to_python(value)
 
 
-@dataclasses.dataclass(eq=False)
 class BigIntField(IntField):
     TYPE: typing.ClassVar[str] = "bigint"
 
 
-@dataclasses.dataclass(eq=False)
 class FloatField(Field):
     TYPE: typing.ClassVar[str] = "float"
 
-    default: float = 0
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class DecimalField(Field):
     TYPE: typing.ClassVar[str] = "decimal(4,2)"
 
-    default: decimal.Decimal = decimal.Decimal()
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class CharField(Field):
     TYPE: typing.ClassVar[str] = "varchar(255)"
 
-    default: str = ""
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class TextField(CharField):
     TYPE: typing.ClassVar[str] = "text"
 
-    default: str = ""
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class BytesField(Field):
     TYPE: typing.ClassVar[str] = "binary(24)"
 
-    default: bytes = b""
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class BlobField(Field):
     TYPE: typing.ClassVar[str] = "blob"
 
-    default: bytes = b""
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class TimeField(Field):
     """Using timedelta other than time which only support from '00:00:00' to '23:59:59'"""
 
     TYPE: typing.ClassVar[str] = "time"
 
-    default: timedelta = timedelta(0)
+    DEFAULT: tp.ClassVar[int] = 0
 
 
-@dataclasses.dataclass(eq=False)
 class DateField(Field):
     TYPE: typing.ClassVar[str] = "date"
 
-    default: typing.Callable = lambda: datetime.now().date()  # noqa
+    DEFAULT: tp.ClassVar[typing.Callable] = lambda: datetime.now().date()  # noqa
 
 
-@dataclasses.dataclass(eq=False)
 class DateTimeField(Field):
     TYPE: typing.ClassVar[str] = "datetime"
 
-    default: typing.Callable = datetime.now
+    DEFAULT: tp.ClassVar[typing.Callable] = datetime.now
 
 
-@dataclasses.dataclass(eq=False)
 class JsonField(CharField):
     TYPE: typing.ClassVar[str] = "varchar(2048)"
 
-    default: typing.Any = dataclasses.field(default_factory=dict)
+    DEFAULT: tp.ClassVar[typing.Any] = dataclasses.field(default_factory=dict)
 
     def to_python(self, value: str) -> typing.Any:
         return json.loads(value)
@@ -268,16 +280,12 @@ def field(
     type="",
     name="",
     comment="",
-    default=Field.FieldDefault,
+    default=Field.Default,
     primary=False,
     auto_increment=False,
     not_null=True,
     enum: typing.Optional[typing.Type[enum.Enum]] = None,
 ) -> typing.Any:
-    extras = {}
-    if default is not Field.FieldDefault:  # default to field default, allow None
-        extras["default"] = default
-
     return field_cls(
         name=name,
         type=type,
@@ -286,7 +294,7 @@ def field(
         auto_increment=auto_increment,
         not_null=not_null,
         enum=enum,
-        **extras,
+        default=default,
     )
 
 
@@ -319,7 +327,7 @@ class Schema:
     fields: typing.List[Field] = dataclasses.field(default_factory=list)
     abstracted: bool = False
 
-    @cached_property.cached_property
+    @utils.cached_property
     def primary_field(self) -> Field:
         for f in self.fields:
             if f.primary:
@@ -435,12 +443,11 @@ class Schema:
         schema = cls(name=m.table_name)
         schema.abstracted = m.table_abstracted
         # fields
-        for f in dataclasses.fields(m):
+        for f in m.__fields__.values():
             if isinstance(f.default, Field):  # from dataclass default
                 f.default.model_name = f.name
                 if not f.default.name:
                     f.default.name = f.name
-                    f.default.__post_init__()
                 schema.fields.append(f.default)
             if hint := typing.get_type_hints(m, include_extras=True).get(
                 f.name
@@ -452,7 +459,6 @@ class Schema:
                         meta.model_name = f.name
                         if not meta.name:
                             meta.name = f.name
-                            meta.__post_init__()
                         meta.default = f.default
                         schema.fields.append(meta)
                         setattr(m, f.name, meta)

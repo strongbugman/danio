@@ -16,13 +16,13 @@ from . import exception, schema
 from .database import Database
 from .schema import Field, Operation, Schema, SQLExpression
 from .utils import class_property
+from .dataclass import BaseData
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SQLCHAIN_TV = typing.TypeVar("SQLCHAIN_TV", bound="SqlChain")
 
 
-@dataclasses.dataclass
-class Model:
+class Model(BaseData):
     DATABASE: typing.ClassVar[ContextVar[typing.Optional[Database]]] = ContextVar(
         "database"
     )
@@ -76,9 +76,6 @@ class Model:
     def primary(self) -> int:
         assert self.schema.primary_field
         return getattr(self, self.schema.primary_field.model_name)
-
-    def __post_init__(self):
-        self.after_init()
 
     def after_init(self):
         for f in self.schema.fields:
@@ -153,7 +150,7 @@ class Model:
         fields: typing.Iterable[Field] = (),
         ignore_fields: typing.Iterable[Field] = (),
         validate: bool = True,
-    ):
+    ) -> MODEL_TV:
         database = (
             database if database else self.__class__.get_database(Operation.CREATE)
         )
@@ -177,7 +174,7 @@ class Model:
         return self
 
     async def update(
-        self: MODEL_TV,
+        self,
         database: typing.Optional[Database] = None,
         fields: typing.Iterable[Field] = (),
         ignore_fields: typing.Iterable[Field] = (),
@@ -241,8 +238,8 @@ class Model:
         new = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
         ).fetch_one(fields=fields)
-        for f in dataclasses.fields(self):
-            setattr(self, f.name, getattr(new, f.name))
+        for f in self.__fields__.keys():
+            setattr(self, f, getattr(new, f))
         return self
 
     async def get_or_create(
