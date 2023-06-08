@@ -51,8 +51,8 @@ class User(danio.Model):
         danio.Field
     ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_3778_idx(created_at)
-    # TABLE INDEX: updated_at_9798_idx(updated_at)
+    # TABLE INDEX: created_at_1469_idx(created_at)
+    # TABLE INDEX: updated_at_3542_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -385,12 +385,15 @@ async def test_complicated_update():
 async def test_field():
     @dataclasses.dataclass
     class Table(danio.Model):
+        fnull: typing.Annotated[
+            typing.Optional[str], danio.CharField(not_null=False)
+        ] = None
         fsint: typing.Annotated[int, danio.SmallIntField] = 0
         fint: typing.Annotated[int, danio.IntField] = 0
         fbint: typing.Annotated[int, danio.BigIntField] = 0
         ftint: typing.Annotated[int, danio.TinyIntField] = 0
-        fbool: typing.Annotated[int, danio.BoolField] = 0
-        ffloat: typing.Annotated[int, danio.FloatField] = 0
+        fbool: typing.Annotated[bool, danio.BoolField] = False
+        ffloat: typing.Annotated[float, danio.FloatField] = 0
         fdecimal: typing.Annotated[
             decimal.Decimal, danio.DecimalField
         ] = decimal.Decimal(0)
@@ -411,6 +414,9 @@ async def test_field():
         )
         fjson2: typing.Annotated[
             typing.Dict[str, int], danio.JsonField
+        ] = dataclasses.field(default_factory=dict)
+        fjson3: typing.Annotated[
+            typing.Dict[str, int], danio.JsonField(type="json")
         ] = dataclasses.field(default_factory=dict)
 
         @classmethod
@@ -434,9 +440,12 @@ async def test_field():
     assert t.fdatetime
     assert t.fjson1 == []
     assert t.fjson2 == {}
+    assert t.fjson3 == {}
+    assert t.fnull is None
     await t.save()
     # read
     t = await Table.where().fetch_one()
+    assert t
     assert t.fint == 0
     assert t.ftint == 0
     assert not t.fbool
@@ -450,6 +459,8 @@ async def test_field():
     assert t.fdatetime
     assert t.fjson1 == []
     assert t.fjson2 == {}
+    assert t.fjson3 == {}
+    assert t.fnull is None
     # update
     t.fint = 1
     t.fsint = 1
@@ -466,9 +477,12 @@ async def test_field():
     t.fdatetime = datetime.datetime.fromtimestamp(24 * 60 * 60)
     t.fjson1.extend([1, 2, 3])
     t.fjson2.update(x=3, y=4, z=5)
+    t.fjson3.update(x=3, y=4, z=5)
+    t.fnull = "hello"
     await t.save()
     # read
     t = await Table.where().fetch_one()
+    assert t
     assert t.fint == 1
     assert t.fsint == 1
     assert t.fbint == 1
@@ -484,6 +498,8 @@ async def test_field():
     assert t.fdatetime == datetime.datetime.fromtimestamp(24 * 60 * 60)
     assert t.fjson1 == [1, 2, 3]
     assert t.fjson2 == {"x": 3, "y": 4, "z": 5}
+    assert t.fjson3 == {"x": 3, "y": 4, "z": 5}
+    assert t.fnull == "hello"
 
 
 @pytest.mark.asyncio

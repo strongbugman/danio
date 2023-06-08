@@ -255,8 +255,11 @@ class JsonField(CharField):
 
     default: typing.Any = dataclasses.field(default_factory=dict)
 
-    def to_python(self, value: str) -> typing.Any:
-        return json.loads(value)
+    def to_python(self, value: typing.Any) -> typing.Any:
+        if value and isinstance(value, str):
+            return json.loads(value)
+        else:
+            return super().to_python(value)
 
     def to_database(self, value: typing.Any) -> str:
         return json.dumps(value)
