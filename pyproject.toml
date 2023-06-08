@@ -22,7 +22,6 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.8"
 databases = "^0.6.0"
-cached-property = "^1.5.2"
 
 [tool.poetry.dev-dependencies]
 pytest = ">=7.0"

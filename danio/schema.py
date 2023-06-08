@@ -14,7 +14,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import reduce
 
-import cached_property
 import sqlalchemy
 
 from . import exception, utils
@@ -319,7 +318,7 @@ class Schema:
     fields: typing.List[Field] = dataclasses.field(default_factory=list)
     abstracted: bool = False
 
-    @cached_property.cached_property
+    @utils.cached_property
     def primary_field(self) -> Field:
         for f in self.fields:
             if f.primary:
