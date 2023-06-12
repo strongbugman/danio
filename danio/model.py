@@ -90,18 +90,20 @@ class Model:
         pass
 
     async def before_create(self, validate: bool = True):
+        await self.before_save()
         if validate:
             await self.validate()
 
     async def after_create(self):
-        pass
+        await self.after_save()
 
     async def before_update(self, validate: bool = True):
+        await self.before_save()
         if validate:
             await self.validate()
 
     async def after_update(self):
-        pass
+        await self.after_save()
 
     async def before_save(self):
         pass
@@ -204,7 +206,6 @@ class Model:
         force_insert=False,
         validate: bool = True,
     ) -> MODEL_TV:
-        await self.before_save()
         if self.primary and not force_insert:
             await self.update(
                 database=database,
@@ -219,7 +220,6 @@ class Model:
                 ignore_fields=ignore_fields,
                 validate=validate,
             )
-        await self.after_save()
         return self
 
     async def delete(

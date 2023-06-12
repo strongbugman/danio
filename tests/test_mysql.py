@@ -51,8 +51,8 @@ class User(danio.Model):
         danio.Field
     ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_1469_idx(created_at)
-    # TABLE INDEX: updated_at_3542_idx(updated_at)
+    # TABLE INDEX: created_at_3693_idx(created_at)
+    # TABLE INDEX: updated_at_4134_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
