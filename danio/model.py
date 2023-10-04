@@ -14,7 +14,7 @@ from databases.interfaces import Record
 
 from . import exception, schema
 from .database import Database
-from .schema import Field, Operation, Schema, SQLExpression
+from .schema import Field, IntField, Operation, Schema, SQLExpression
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
@@ -28,7 +28,7 @@ class Model:
     )
 
     ID: typing.ClassVar[Field]
-    id: typing.Annotated[int, schema.IntField(primary=True, auto_increment=True)] = 0
+    id: typing.Annotated[int, IntField(primary=True, auto_increment=True)] = 0
     # for table schema
     _table_prefix: typing.ClassVar[str] = ""
     _table_name_prefix: typing.ClassVar[str] = ""
@@ -574,6 +574,17 @@ class SqlChain(schema.Crud, typing.Generic[MODEL_TV]):
             return ins
         else:
             return None
+
+    async def must_fetch_one(
+        self,
+        fields: typing.Iterable[Field] = tuple(),
+        ignore_fields: typing.Iterable[Field] = tuple(),
+    ) -> MODEL_TV:
+        instance = await self.fetch_one(fields=fields, ignore_fields=ignore_fields)
+        if instance is None:
+            raise exception.NotFound()
+        else:
+            return instance
 
     async def fetch_row(
         self,

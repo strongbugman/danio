@@ -22,6 +22,7 @@ from .schema import (
     TextField,
     TimeField,
     field,
+    Migration,
 )
 
 __all__ = (
@@ -49,4 +50,5 @@ __all__ = (
     "DateField",
     "DateTimeField",
     "JsonField",
+    "Migration",
 )

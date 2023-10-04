@@ -24,8 +24,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_4935_idx(name)
-    # TABLE UNIQUE INDEX: name_id_8245_uiq(name,id)
+    # TABLE INDEX: name_6466_idx(name)
+    # TABLE UNIQUE INDEX: name_id_7276_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
