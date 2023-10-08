@@ -1,7 +1,7 @@
 from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
-from .model import Model
+from .model import Model, model, id_to_one, id_to_many
 from .schema import (
     Operation,
     CharField,
@@ -23,6 +23,8 @@ from .schema import (
     TimeField,
     field,
     Migration,
+    RelationField,
+    V,
 )
 
 __all__ = (
@@ -31,6 +33,7 @@ __all__ = (
     "ValidateException",
     "Operation",
     "Model",
+    "model",
     "Schema",
     "manage",
     "field",
@@ -51,4 +54,8 @@ __all__ = (
     "DateTimeField",
     "JsonField",
     "Migration",
+    "RelationField",
+    "id_to_one",
+    "id_to_many",
+    "V",
 )

@@ -117,7 +117,7 @@ async def database():
         await read_db.connect()
         await read_db2.connect()
         await db2.connect()
-        for sql in danio.Schema.from_model(User).to_sql(type=db.type).split(";"):
+        for sql in User.get_schema().to_sql(type=db.type).split(";"):
             if sql:
                 await db.execute(sql + ";")
         await danio.manage.init(db, ["tests.test_postgres"])
@@ -479,7 +479,7 @@ async def test_schema():
             ("level",),
         )
 
-    m = danio.Schema.from_model(UserProfile) - UserProfile.schema
+    m = UserProfile.get_schema() - UserProfile.schema
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
@@ -538,16 +538,15 @@ async def test_schema():
     assert not await danio.Schema.from_db(db, UserBackpack)
     # wrong index
 
-    @dataclasses.dataclass
-    class UserBackpack3(BaseUserBackpack):
-        id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
-        user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
-        weight: typing.Annotated[int, danio.IntField] = 0
-
-        _table_index_keys = (("wrong_id"),)
 
     with pytest.raises(danio.SchemaException):
-        danio.Schema.from_model(UserBackpack3)
+        @dataclasses.dataclass
+        class UserBackpack3(BaseUserBackpack):
+            id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
+            user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
+            weight: typing.Annotated[int, danio.IntField] = 0
+
+            _table_index_keys = (("wrong_id"),)
 
 
 @pytest.mark.asyncio
