@@ -15,8 +15,15 @@ from databases.interfaces import Record
 
 from . import exception, schema
 from .database import Database
-from .schema import (Field, Index, IntField, Operation, RelationField, Schema,
-                     SQLExpression)
+from .schema import (
+    Field,
+    Index,
+    IntField,
+    Operation,
+    RelationField,
+    Schema,
+    SQLExpression,
+)
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")

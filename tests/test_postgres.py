@@ -39,7 +39,7 @@ read_db2 = danio.Database(
 user_count = 0
 
 
-@dataclasses.dataclass
+@danio.model
 class User(danio.Model):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user
@@ -272,7 +272,7 @@ async def test_sql():
             u.save(fields=[User.name], database=db)
     # upsert
 
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(danio.Model):
         id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
         user_id: typing.Annotated[int, danio.IntField] = 0
@@ -398,7 +398,7 @@ async def test_bulk_operations():
 
 @pytest.mark.asyncio
 async def test_combo_operations():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(danio.Model):
         id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
         user_id: typing.Annotated[int, danio.IntField] = 0
@@ -463,7 +463,7 @@ async def test_combo_operations():
 
 @pytest.mark.asyncio
 async def test_schema():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(User):
         id: typing.Annotated[int, danio.IntField(primary=True, type="serial")] = 0
         user_id: typing.Annotated[int, danio.IntField] = 0
@@ -499,7 +499,7 @@ async def test_schema():
     )
     # abstract class
 
-    @dataclasses.dataclass
+    @danio.model
     class BaseUserBackpack(User):
         user_id: typing.Annotated[int, danio.IntField] = 0
         weight: typing.Annotated[int, danio.IntField] = 0
@@ -510,13 +510,13 @@ async def test_schema():
     assert BaseUserBackpack.schema.to_sql(type=db.type)
     # disable fields
 
-    @dataclasses.dataclass
+    @danio.model
     class UserBackpack(BaseUserBackpack):
         id: int = 0
         pk: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
 
     # db name
-    @dataclasses.dataclass
+    @danio.model
     class UserBackpack2(BaseUserBackpack):
         id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
         user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
@@ -529,18 +529,18 @@ async def test_schema():
         if sql:
             await db.execute(sql + ";" if sql[-1] != ";" else "")
     # from db
-    m = UserBackpack2.schema - await danio.Schema.from_db(db, UserBackpack2)
+    m = UserBackpack2.schema - await UserBackpack2.get_db_schema(db)
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.drop_indexes
     assert not m.add_indexes
-    assert await danio.Schema.from_db(db, UserProfile)
-    assert not await danio.Schema.from_db(db, UserBackpack)
+    assert await UserProfile.get_db_schema(db)
+    assert not await UserBackpack.get_db_schema(db)
     # wrong index
 
     with pytest.raises(danio.SchemaException):
 
-        @dataclasses.dataclass
+        @danio.model
         class UserBackpack3(BaseUserBackpack):
             id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
             user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
@@ -551,7 +551,7 @@ async def test_schema():
 
 @pytest.mark.asyncio
 async def test_migrate():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(User):
         id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
         user_id: typing.Annotated[int, danio.IntField()] = 0
@@ -569,17 +569,18 @@ async def test_migrate():
 
     sqls = (UserProfile.schema - None).to_sql(type=db.type)
     sqls += (
-        'ALTER TABLE userprofile ADD COLUMN "group_id" int NOT NULL;'
-        "ALTER TABLE userprofile DROP COLUMN level;"
-        "ALTER TABLE userprofile ALTER COLUMN user_id TYPE bigint;"
-        'CREATE  INDEX "group_id_6969_idx"  on userprofile ("group_id");'
-        'CREATE  INDEX "user_id_6969_idx"  on userprofile ("user_id");'
+        'ALTER TABLE user_profile ADD COLUMN "group_id" int NOT NULL;'
+        "ALTER TABLE user_profile DROP COLUMN level;"
+        "ALTER TABLE user_profile ALTER COLUMN user_id TYPE bigint;"
+        'CREATE  INDEX "group_id_6969_idx"  on user_profile ("group_id");'
+        'CREATE  INDEX "user_id_6969_idx"  on user_profile ("user_id");'
     )
     for sql in sqls.split(";"):
         if sql:
             await db.execute(sql + ";" if sql[-1] != ";" else "")
     # make migration
-    old_schema = await danio.Schema.from_db(db, UserProfile)
+    old_schema = await UserProfile.get_db_schema(db)
+    assert old_schema
     migration: danio.Migration = UserProfile.schema - old_schema
     assert len(migration.add_fields) == 1
     assert migration.add_fields[0].name == "level"
@@ -595,7 +596,7 @@ async def test_migrate():
     for sql in migration.to_sql(type=db.type).split(";"):
         if sql:
             await db.execute(sql + ";" if sql[-1] != ";" else "")
-    m = UserProfile.schema - await danio.Schema.from_db(db, UserProfile)
+    m = UserProfile.schema - await UserProfile.get_db_schema(db)
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
@@ -605,7 +606,7 @@ async def test_migrate():
     for sql in (~migration).to_sql(type=db.type).split(";"):
         if sql:
             await db.execute(sql + ";" if sql[-1] != ";" else "")
-    m = old_schema - await danio.Schema.from_db(db, UserProfile)
+    m = old_schema - (await UserProfile.get_db_schema(db))
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
@@ -619,10 +620,10 @@ async def test_migrate():
 
 @pytest.mark.asyncio
 async def test_manage():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(User):
         # --------------------Danio Hints--------------------
-        # TABLE NAME: userprofile
+        # TABLE NAME: user_profile
         # TABLE IS NOT MIGRATED!
         ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
         NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL

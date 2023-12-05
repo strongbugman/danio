@@ -54,7 +54,7 @@ class UserProfile(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: user_id_662_uiq(user_id)
+    # TABLE UNIQUE INDEX: user_id_5589_uiq(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     level: typing.Annotated[int, danio.IntField] = 0
@@ -81,7 +81,7 @@ class Pet(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT ''
-    # TABLE INDEX: user_id_8460_idx(user_id)
+    # TABLE INDEX: user_id_8578_idx(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     name: typing.Annotated[str, danio.CharField()] = ""
@@ -110,7 +110,7 @@ class UserGroup(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` bigint NOT NULL  COMMENT ''
     GROUP_ID: typing.ClassVar[danio.Field]  # `group_id` bigint NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: group_id_user_i_8446_uiq(group_id,user_id)
+    # TABLE UNIQUE INDEX: group_id_user_i_9715_uiq(group_id,user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.BigIntField()] = 0
     group_id: typing.Annotated[int, danio.BigIntField()] = 0
@@ -137,8 +137,8 @@ class User(BaseModel):
         danio.Field
     ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_4846_idx(created_at)
-    # TABLE INDEX: updated_at_3648_idx(updated_at)
+    # TABLE INDEX: created_at_1644_idx(created_at)
+    # TABLE INDEX: updated_at_9608_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):

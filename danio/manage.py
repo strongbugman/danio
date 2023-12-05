@@ -6,7 +6,7 @@ from datetime import datetime
 
 from . import utils
 from .database import Database
-from .model import Model, Schema
+from .model import Model
 
 
 def get_models(paths: typing.List[str]) -> typing.List[typing.Type[Model]]:

@@ -1,4 +1,3 @@
-import dataclasses
 import enum
 import glob
 import os
@@ -15,7 +14,7 @@ db = danio.Database(
 danio.Model.DATABASE.set(db)
 
 
-@dataclasses.dataclass
+@danio.model
 class User(danio.Model):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user
@@ -24,8 +23,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_6466_idx(name)
-    # TABLE UNIQUE INDEX: name_id_7276_uiq(name,id)
+    # TABLE INDEX: name_3693_idx(name)
+    # TABLE UNIQUE INDEX: name_id_6593_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -234,7 +233,7 @@ async def test_bulk_operations():
 
 @pytest.mark.asyncio
 async def test_combo_operations():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(danio.Model):
         id: typing.Annotated[
             int,
@@ -303,7 +302,7 @@ async def test_combo_operations():
 
 @pytest.mark.asyncio
 async def test_schema():
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(User):
         user_id: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
         level: typing.Annotated[int, danio.IntField(type="INTEGER")] = 0
@@ -318,7 +317,7 @@ async def test_schema():
             ("level",),
         )
 
-    m = danio.Schema.from_model(UserProfile) - UserProfile.schema
+    m = UserProfile.get_schema() - UserProfile.schema
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
@@ -339,10 +338,10 @@ async def test_migrate():
         # Migrate support with 3.35+
         return
 
-    @dataclasses.dataclass
+    @danio.model
     class UserProfile(User):
         # --------------------Danio Hints--------------------
-        # TABLE NAME: userprofile
+        # TABLE NAME: user_profile
         # TABLE IS NOT MIGRATED!
         ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT
         NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
@@ -376,14 +375,15 @@ async def test_migrate():
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript(UserProfile.schema.to_sql(type=db.type))
             await cursor.executescript(
-                "ALTER TABLE userprofile ADD COLUMN `group_id` INTEGER NOT NULL DEFAULT 0;"
-                "CREATE  INDEX `userprofile_group_id_6969_idx`  on `userprofile` (`group_id`);"
-                "CREATE  INDEX `userprofile_user_id_6969_idx`  on `userprofile` (`user_id`);"
+                "ALTER TABLE user_profile ADD COLUMN `group_id` INTEGER NOT NULL DEFAULT 0;"
+                "CREATE  INDEX `user_profile_group_id_6969_idx`  on `user_profile` (`group_id`);"
+                "CREATE  INDEX `user_profile_user_id_6969_idx`  on `user_profile` (`user_id`);"
                 "DROP INDEX level_11_idx;"
-                "ALTER TABLE userprofile DROP COLUMN level;"
+                "ALTER TABLE user_profile DROP COLUMN level;"
             )
     # make migration
-    old_schema = await danio.Schema.from_db(db, UserProfile)
+    old_schema = await UserProfile.get_db_schema(db)
+    assert old_schema
     migration: danio.Migration = UserProfile.schema - old_schema
     assert len(migration.add_fields) == 1
     assert migration.add_fields[0].name == "level"
@@ -398,7 +398,7 @@ async def test_migrate():
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript(migration.to_sql(type=db.type))
-    m = UserProfile.schema - await danio.Schema.from_db(db, UserProfile)
+    m = UserProfile.schema - await UserProfile.get_db_schema(db)
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
@@ -408,7 +408,7 @@ async def test_migrate():
     async with db.connection() as connection:
         async with connection._connection._connection.cursor() as cursor:
             await cursor.executescript((~migration).to_sql(type=db.type))
-    m = old_schema - await danio.Schema.from_db(db, UserProfile)
+    m = old_schema - await UserProfile.get_db_schema(db)
     assert not m.add_fields
     assert not m.drop_fields
     assert not m.change_type_fields
