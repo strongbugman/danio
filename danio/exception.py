@@ -12,3 +12,7 @@ class IntegrityError(Exception):
 
 class OperationException(Exception):
     pass
+
+
+class NotFound(Exception):
+    pass

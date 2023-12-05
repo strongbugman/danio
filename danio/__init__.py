@@ -1,26 +1,29 @@
 from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
-from .model import Model
+from .model import Model, id_to_many, id_to_one, model
 from .schema import (
-    Operation,
+    BigIntField,
+    BlobField,
+    BoolField,
+    BytesField,
     CharField,
     DateField,
     DateTimeField,
+    DecimalField,
     Field,
     FloatField,
-    DecimalField,
     IntField,
-    BytesField,
-    BlobField,
-    TinyIntField,
-    SmallIntField,
-    BigIntField,
-    BoolField,
     JsonField,
+    Migration,
+    Operation,
+    RelationField,
     Schema,
+    SmallIntField,
     TextField,
     TimeField,
+    TinyIntField,
+    V,
     field,
 )
 
@@ -30,6 +33,7 @@ __all__ = (
     "ValidateException",
     "Operation",
     "Model",
+    "model",
     "Schema",
     "manage",
     "field",
@@ -49,4 +53,9 @@ __all__ = (
     "DateField",
     "DateTimeField",
     "JsonField",
+    "Migration",
+    "RelationField",
+    "id_to_one",
+    "id_to_many",
+    "V",
 )

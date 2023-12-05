@@ -6,7 +6,7 @@ from datetime import datetime
 
 from . import utils
 from .database import Database
-from .model import Model, Schema
+from .model import Model
 
 
 def get_models(paths: typing.List[str]) -> typing.List[typing.Type[Model]]:
@@ -30,7 +30,7 @@ async def make_migration(
         sqls.append(f"USE `{db.url.database}`;")
     down_sqls.extend(sqls)
     for m in models:
-        db_schema = None if not db.is_connected else await Schema.from_db(db, m)
+        db_schema = None if not db.is_connected else await m.get_db_schema(db)
         migration = m.schema - db_schema
         migration_sql = migration.to_sql(type=db.type)
         if migration_sql:
@@ -91,7 +91,7 @@ async def write_model_hints(
     ths = [hints_title]
     ths.append(f"{' ' * indentsize}# TABLE NAME: {Model.table_name}\n")
     migrated = False
-    db_schema = await Schema.from_db(db, Model)
+    db_schema = await Model.get_db_schema(db)
     if db_schema and db_schema == Model.schema:
         migrated = True
         Model.schema.sync_index_name(db_schema)
@@ -123,10 +123,10 @@ async def show_model_define(
     db: Database,
     table: str,
 ):
-    schema = await Schema.from_db(db, type("ModelCls", (Model,), {"table_name": table}))
+    schema = await type("ModelCls", (Model,), {"table_name": table}).get_db_schema(db)  # type: ignore
     if not schema:
         raise RuntimeError(f"table {table} not founded!")
-    defines = ["@danio.dataclass", f"class {table}(danio.Model):"]
+    defines = ["@danio.model", f"class {table}(danio.Model):"]
     for field in schema.fields:
         defines.append(
             f'  {field.name}: typing.Annotated[{field.default.__class__.__name__}, danio.{field.__class__.__name__}(type="{field.type}")] = {repr(field.default_value)}'

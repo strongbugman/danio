@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import dataclasses
 import decimal
 import enum
 import itertools
 import json
-import logging
 import random
-import re
 import typing
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -19,11 +18,7 @@ import sqlalchemy
 from . import exception, utils
 from .database import Database
 
-if typing.TYPE_CHECKING:
-    from .model import MODEL_TV
-else:
-    MODEL_TV = typing.TypeVar("MODEL_TV")
-
+T = typing.TypeVar("T")
 SCHEMA_TV = typing.TypeVar("SCHEMA_TV", bound="Schema")
 MIGRATION_TV = typing.TypeVar("MIGRATION_TV", bound="Migration")
 MARKER_TV = typing.TypeVar("MARKER_TV", bound="SQLMarker")
@@ -33,6 +28,14 @@ CASE_TV = typing.TypeVar("CASE_TV", bound="SQLCase")
 
 def join(*contents, delimiter=" ") -> str:
     return delimiter.join(tuple(filter(lambda c: c, contents)))
+
+
+def V(value: typing.Any) -> str:
+    return (
+        sqlalchemy.text(":df")
+        .bindparams(df=value)
+        .compile(compile_kwargs={"literal_binds": True})
+    )
 
 
 @dataclasses.dataclass
@@ -103,7 +106,7 @@ class Field:
     def __truediv__(self, other: object) -> SQLExpression:
         return SQLExpression(field=self, values=[(SQLExpression.Operator.DIV, other)])
 
-    def contains(self, values: typing.Iterable) -> SQLExpression:
+    def contains(self, values: object) -> SQLExpression:
         if not values:
             raise ValueError("Empty values")
 
@@ -314,11 +317,32 @@ class Index:
             return ""
 
 
+class RelationField(typing.Generic[T]):
+    def __init__(
+        self, fetcher: typing.Callable[[T], typing.Any], auto: bool = False
+    ) -> None:
+        self.fetcher = fetcher
+        self.auto = auto
+
+    def set_model_name(self, model_name: str):
+        self.model_name = model_name
+
+    async def load(self, instance: T) -> typing.Any:
+        result = self.fetcher(instance)
+        if asyncio.iscoroutine(result):
+            return await result
+        else:
+            return result
+
+
 @dataclasses.dataclass(eq=False)
 class Schema:
     name: str
     indexes: typing.List[Index] = dataclasses.field(default_factory=list)
     fields: typing.List[Field] = dataclasses.field(default_factory=list)
+    relation_fields: typing.List[RelationField] = dataclasses.field(
+        default_factory=list
+    )
     abstracted: bool = False
 
     @utils.cached_property
@@ -433,51 +457,6 @@ class Schema:
         return sql
 
     @classmethod
-    def from_model(cls: typing.Type[SCHEMA_TV], m: typing.Type[MODEL_TV]) -> SCHEMA_TV:
-        schema = cls(name=m.table_name)
-        schema.abstracted = m.table_abstracted
-        # fields
-        for f in dataclasses.fields(m):
-            if isinstance(f.default, Field):  # from dataclass default
-                f.default.model_name = f.name
-                if not f.default.name:
-                    f.default.name = f.name
-                    f.default.__post_init__()
-                schema.fields.append(f.default)
-            if hint := typing.get_type_hints(m, include_extras=True).get(
-                f.name
-            ):  # from Annotated
-                for meta in getattr(hint, "__metadata__", ()):
-                    if type(meta) is type and issubclass(meta, Field):
-                        meta = meta()
-                    if isinstance(meta, Field):
-                        meta.model_name = f.name
-                        if not meta.name:
-                            meta.name = f.name
-                            meta.__post_init__()
-                        meta.default = f.default
-                        schema.fields.append(meta)
-                        setattr(m, f.name, meta)
-                        setattr(m, f.name.upper(), meta)
-        fields = {f.model_name: f for f in schema.fields}
-        # index
-        for i, index_keys in enumerate((m.table_index_keys, m.table_unique_keys)):
-            for keys in index_keys:
-                if keys:
-                    _fields = []
-                    for key in keys:
-                        if isinstance(key, Field):
-                            _fields.append(key)
-                        elif isinstance(key, str) and key in fields:
-                            _fields.append(fields[key])
-                        else:
-                            raise exception.SchemaException(
-                                f"Index: {keys} not supported"
-                            )
-                    schema.indexes.append(Index(fields=_fields, unique=i == 1))
-        return schema
-
-    @classmethod
     def detect_field_type(cls, _: Database, field_type: str) -> typing.Type[Field]:
         if utils.contains(field_type, ("json",)):
             return JsonField
@@ -501,134 +480,6 @@ class Schema:
             return CharField
         else:
             return Field
-
-    @classmethod
-    async def from_db(
-        cls: typing.Type[SCHEMA_TV], database: Database, m: typing.Type[MODEL_TV]
-    ) -> typing.Optional[SCHEMA_TV]:
-        schema = cls(name=m.table_name if m else "table")
-        model_names = {f.name: f.model_name for f in m.schema.fields} if m else {}
-        if database.type == database.type.MYSQL:
-            field_name_pattern = re.compile(r"`([^ ,]*)`")
-            try:
-                for line in (
-                    await database.fetch_all(f"SHOW CREATE TABLE {m.table_name}")
-                )[0][1].split("\n")[1:-1]:
-                    if "PRIMARY KEY" in line:
-                        db_name = field_name_pattern.findall(line)[0]
-                        for f in schema.fields:
-                            if db_name == f.name:
-                                f.primary = True
-                                break
-                    elif "FOREIGN KEY" in line:
-                        logging.warning("FOREIGN KEY not support!")
-                    elif "KEY" in line:
-                        fields = {f.name: f for f in schema.fields}
-                        index_fields = []
-                        _names = field_name_pattern.findall(line)
-                        index_name = _names[0]
-                        index_fields = [fields[n] for n in _names[1:]]
-                        schema.indexes.append(
-                            Index(
-                                fields=index_fields,
-                                unique="UNIQUE" in line,
-                                name=index_name,
-                            )
-                        )
-                    else:
-                        db_name = field_name_pattern.findall(line)[0]
-                        name = model_names.get(db_name, "")
-                        field_type = line.split("`")[-1].split(" ")[1]
-                        schema.fields.append(
-                            cls.detect_field_type(database, field_type)(
-                                name=db_name,
-                                type=field_type,
-                                model_name=name,
-                                auto_increment="AUTO_INCREMENT" in line,
-                                not_null="NOT NULL" in line,
-                            )
-                        )
-            except Exception as e:
-                if "doesn't exist" in str(e):
-                    return None
-                raise e
-        elif database.type == database.type.SQLITE:
-            field_name_pattern = re.compile(r"`([^ ,]*)`")
-            for r in await database.fetch_all(
-                f"SELECT * FROM sqlite_schema WHERE tbl_name = '{m.table_name}';"
-            ):
-                if r[0] == "table":
-                    for line in r[4].split("\n")[1:]:
-                        names = field_name_pattern.findall(line)
-                        if names:
-                            db_name = names[0]
-                            name = model_names.get(db_name, "")
-                            primary = False
-                            if "PRIMARY" in line:
-                                primary = True
-                            auto_increment = False
-                            if "AUTOINCREMENT" in line:
-                                auto_increment = True
-                            field_type = line.split("`")[-1].split(" ")[1]
-                            schema.fields.append(
-                                cls.detect_field_type(database, field_type)(
-                                    name=db_name,
-                                    type=field_type,
-                                    model_name=name,
-                                    primary=primary,
-                                    auto_increment=auto_increment,
-                                )
-                            )
-                elif r[0] == "index":
-                    fields = {f.name: f for f in schema.fields}
-                    _names = field_name_pattern.findall(r[4])
-                    index_fields = [fields[n] for n in _names[2:]]
-                    schema.indexes.append(
-                        Index(
-                            fields=index_fields,
-                            unique="UNIQUE" in r[4],
-                            name=r[1],
-                        )
-                    )
-        else:
-            for r in await database.fetch_all(
-                f"SELECT * FROM information_schema.columns WHERE table_name = '{m.table_name}';"
-            ):
-                d = dict(r)
-                field_type = d["data_type"]
-                if field_type == "character varying":
-                    field_type = f"varchar({d['character_maximum_length']})"
-                elif field_type == "character":
-                    field_type = f"char({d['character_maximum_length']})"
-                else:
-                    field_type = field_type
-                schema.fields.append(
-                    cls.detect_field_type(database, field_type)(
-                        name=d["column_name"],
-                        model_name=model_names.get(d["column_name"], ""),
-                        type=field_type,
-                    )
-                )
-            for r in await database.fetch_all(
-                f"SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '{m.table_name}';"
-            ):
-                d = dict(r)
-                fields = {f.name: f for f in schema.fields}
-                _names = d["indexdef"].split("(")[-1].split(")")[0].split(", ")
-                index_fields = [fields[n] for n in _names]
-                if d["indexname"].endswith("_pkey"):
-                    primary_field = index_fields[0]
-                    primary_field.primary = True
-                else:
-                    schema.indexes.append(
-                        Index(
-                            fields=index_fields,
-                            unique="UNIQUE" in d["indexdef"],
-                            name=d["indexname"],
-                        )
-                    )
-
-        return schema if schema.fields else None
 
 
 @dataclasses.dataclass
@@ -689,9 +540,7 @@ class Migration:
                     f"ALTER TABLE {type.quote(self.schema.name)} ADD COLUMN {f.to_sql(type=type)}"
                 )
                 if not isinstance(f.default_value, f.NoDefault):
-                    sqls[
-                        -1
-                    ] += f" DEFAULT {sqlalchemy.text(':df').bindparams(df=f.to_database(f.default_value)).compile(compile_kwargs={'literal_binds': True})}"
+                    sqls[-1] += f" DEFAULT {V(f.to_database(f.default_value))}"
                     if type != Database.Type.SQLITE:
                         sqls.append(
                             f"ALTER TABLE {type.quote(self.schema.name)} ALTER COLUMN {type.quote(f.name)} DROP DEFAULT"
@@ -850,7 +699,10 @@ class SQLExpression(SQLMarker):
         sql = f"{type.quote(self.field.name)}"
         for op, value in self.values:
             if op == self.Operator.IN:
-                sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
+                if isinstance(value, SQLMarker):
+                    sql += f" {op.value} ({self._parse(value, type=type)})"
+                else:
+                    sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
             elif op == self.Operator.LK:
                 sql += f" {op.value} :{self.mark(value)}"
             elif isinstance(value, SQLExpression):
@@ -914,6 +766,7 @@ class Crud(BaseSQLBuilder):
     _force_indexes: typing.List[
         typing.Tuple[typing.Sequence[str], str]
     ] = dataclasses.field(default_factory=list)
+    _selected_fields: typing.List[Field] = dataclasses.field(default_factory=list)
 
     def where(
         self: CRUD_TV,
@@ -930,6 +783,10 @@ class Crud(BaseSQLBuilder):
         elif raw:
             self._raw_where = raw
 
+        return self
+
+    def select(self: CRUD_TV, *fields: Field) -> CRUD_TV:
+        self._selected_fields.extend(fields)
         return self
 
     def limit(self: CRUD_TV, n: int) -> CRUD_TV:
@@ -973,6 +830,9 @@ class Crud(BaseSQLBuilder):
         self._force_indexes.append((indexes, _for))
         return self
 
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
+        return self.to_select_sql(type=type)[:-1]
+
     def to_select_sql(
         self,
         count=False,
@@ -982,9 +842,10 @@ class Crud(BaseSQLBuilder):
     ) -> str:
         assert self.schema
 
+        self._selected_fields.extend(fields)
         if not count:
             _ignore_fields = {f.name for f in ignore_fields}
-            sql = f"SELECT {', '.join(f'{type.quote(f.name)}' for f in fields or self.schema.fields if f.name not in _ignore_fields)} FROM {type.quote(self.schema.name)}"
+            sql = f"SELECT {', '.join(f'{type.quote(f.name)}' for f in self._selected_fields or self.schema.fields if f.name not in _ignore_fields)} FROM {type.quote(self.schema.name)}"
         else:
             sql = f"SELECT COUNT(*) FROM {type.quote(self.schema.name)}"
         if type == type.MYSQL:
