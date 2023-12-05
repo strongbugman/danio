@@ -3,7 +3,6 @@ Base ORM model with CRUD
 """
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import enum
 import logging
@@ -16,7 +15,8 @@ from databases.interfaces import Record
 
 from . import exception, schema
 from .database import Database
-from .schema import Field, IntField, Operation, Schema, SQLExpression, Index, RelationField
+from .schema import (Field, Index, IntField, Operation, RelationField, Schema,
+                     SQLExpression)
 from .utils import class_property
 
 MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
@@ -134,7 +134,7 @@ class Model:
                 raise exception.ValidateException(
                     f"{self.table_name}.{f.model_name} required!"
                 )
-    
+
     async def load_relations(self, auto=False):
         for relation_field in self.schema.relation_fields:
             if auto and not relation_field.auto:
@@ -576,9 +576,7 @@ class Model:
         return schema
 
     @classmethod
-    async def get_db_schema(
-        cls, database: Database
-    ) -> typing.Optional[Schema]:
+    async def get_db_schema(cls, database: Database) -> typing.Optional[Schema]:
         schema = Schema(name=cls.table_name if cls else "table")
         model_names = {f.name: f.model_name for f in cls.schema.fields} if cls else {}
         if database.type == database.type.MYSQL:
@@ -829,8 +827,18 @@ class SqlChain(schema.Crud, typing.Generic[MODEL_TV]):
         )[1]
 
 
-def id_to_one(related_model: typing.Type[Model], related_field: Field, auto: bool = False) -> RelationField:
-    return RelationField(lambda ins: related_model.where(related_field == ins.id).must_fetch_one(), auto=auto)
+def id_to_one(
+    related_model: typing.Type[Model], related_field: Field, auto: bool = False
+) -> RelationField:
+    return RelationField(
+        lambda ins: related_model.where(related_field == ins.id).must_fetch_one(),
+        auto=auto,
+    )
 
-def id_to_many(related_model: typing.Type[Model], related_field: Field, auto: bool = False) -> RelationField:
-    return RelationField(lambda ins: related_model.where(related_field == ins.id).fetch_all(), auto=auto)
+
+def id_to_many(
+    related_model: typing.Type[Model], related_field: Field, auto: bool = False
+) -> RelationField:
+    return RelationField(
+        lambda ins: related_model.where(related_field == ins.id).fetch_all(), auto=auto
+    )

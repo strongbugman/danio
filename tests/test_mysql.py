@@ -31,18 +31,30 @@ read_db = danio.Database(
 db_name = "test_danio"
 
 
+@danio.model
+class BaseModel(danio.Model):
+    _table_abstracted = True
+
+    @classmethod
+    def get_database(cls, operation: danio.Operation, *_, **__) -> danio.Database:
+        if operation == danio.Operation.READ:
+            return read_db
+        else:
+            return db
+
+
 user_count = 0
 
 
 @danio.model
-class UserProfile(danio.Model):
+class UserProfile(BaseModel):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user_profile
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: user_id_652_uiq(user_id)
+    # TABLE UNIQUE INDEX: user_id_662_uiq(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     level: typing.Annotated[int, danio.IntField] = 0
@@ -62,14 +74,14 @@ class UserProfile(danio.Model):
 
 
 @danio.model
-class Pet(danio.Model):
+class Pet(BaseModel):
     # --------------------Danio Hints--------------------
     # TABLE NAME: pet
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT ''
-    # TABLE INDEX: user_id_6424_idx(user_id)
+    # TABLE INDEX: user_id_8460_idx(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     name: typing.Annotated[str, danio.CharField()] = ""
@@ -78,17 +90,9 @@ class Pet(danio.Model):
     def get_table_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
         return ((cls.USER_ID,),)
 
-    @classmethod
-    def get_database(
-        cls, operation: danio.Operation, *args, **kwargs
-    ) -> danio.Database:
-        if operation == danio.Operation.READ:
-            return read_db
-        else:
-            return db
 
 @danio.model
-class Group(danio.Model):
+class Group(BaseModel):
     # --------------------Danio Hints--------------------
     # TABLE NAME: group
     # TABLE IS MIGRATED!
@@ -99,18 +103,17 @@ class Group(danio.Model):
 
 
 @danio.model
-class UserGroup(danio.Model):
+class UserGroup(BaseModel):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user_group
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` bigint NOT NULL  COMMENT ''
     GROUP_ID: typing.ClassVar[danio.Field]  # `group_id` bigint NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: group_id_user_i_6229_uiq(group_id,user_id)
+    # TABLE UNIQUE INDEX: group_id_user_i_8446_uiq(group_id,user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.BigIntField()] = 0
     group_id: typing.Annotated[int, danio.BigIntField()] = 0
-
 
     @classmethod
     def get_table_unique_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
@@ -118,18 +121,24 @@ class UserGroup(danio.Model):
 
 
 @danio.model
-class User(danio.Model):
+class User(BaseModel):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-    NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+    NAME: typing.ClassVar[
+        danio.Field
+    ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
     AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-    CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-    UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+    CREATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+    UPDATED_AT: typing.ClassVar[
+        danio.Field
+    ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_4347_idx(created_at)
-    # TABLE INDEX: updated_at_6248_idx(updated_at)
+    # TABLE INDEX: created_at_4846_idx(created_at)
+    # TABLE INDEX: updated_at_3648_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -155,10 +164,17 @@ class User(danio.Model):
         typing.List[Pet],
         danio.id_to_many(Pet, Pet.USER_ID, auto=True),
     ] = dataclasses.field(default_factory=list)
-    # TODO: sub select
     groups: typing.Annotated[
         typing.List[Group],
-        danio.RelationField["User"](lambda user: Group.where(raw=f"id in (select user_id from user_group where user_id = {danio.V(user.id)})"))
+        danio.RelationField["User"](
+            lambda user: Group.where(
+                Group.ID.contains(
+                    UserGroup.where(UserGroup.USER_ID == user.id).select(
+                        UserGroup.GROUP_ID
+                    )
+                )
+            ).fetch_all()
+        ),
     ] = dataclasses.field(default_factory=list)
 
     async def after_create(self):
@@ -174,15 +190,6 @@ class User(danio.Model):
         await super().validate()
         if not self.name:
             raise danio.ValidateException("Empty name!")
-
-    @classmethod
-    def get_database(
-        cls, operation: danio.Operation, *args, **kwargs
-    ) -> danio.Database:
-        if operation == danio.Operation.READ:
-            return read_db
-        else:
-            return db
 
     @classmethod
     def get_table_index_keys(cls) -> typing.Tuple[typing.Tuple[typing.Any, ...], ...]:
@@ -375,14 +382,21 @@ async def test_sql():
             await u.save(fields=[User.NAME], database=db)
     # use index
     await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
-    await User.where().use_index(
-        [list(User.schema.indexes)[0].name, list(User.schema.indexes)[0].name]
-    ).fetch_all()
+    await (
+        User.where()
+        .use_index(
+            [list(User.schema.indexes)[0].name, list(User.schema.indexes)[0].name]
+        )
+        .fetch_all()
+    )
     await User.where().ignore_index([list(User.schema.indexes)[0].name]).fetch_all()
     await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
-    await User.where().force_index(
-        [list(User.schema.indexes)[0].name], _for="FOR ORDER BY"
-    ).order_by(User.CREATED_AT).fetch_all()
+    await (
+        User.where()
+        .force_index([list(User.schema.indexes)[0].name], _for="FOR ORDER BY")
+        .order_by(User.CREATED_AT)
+        .fetch_all()
+    )
     # upsert
 
     created, updated = await UserProfile.upsert(
@@ -666,15 +680,21 @@ async def test_combo_operations():
     assert up.id
     assert not created
     assert not updated
-  
+
 
 @pytest.mark.asyncio
 async def test_relation():
     await User(name="test").save()
     u = await User().where().must_fetch_one()
-    user_profile = await UserProfile(user_id=u.id).save()
+    g = await Group().save()
+    assert not any((u.user_profile.id > 0, u.pets, u.groups))
+    await UserProfile(user_id=u.id).save()
+    await Pet(user_id=u.id).save()
+    await UserGroup(user_id=u.id, group_id=g.id).save()
     await u.load_relations()
-    print(u.user_profile, u.pets, u.groups)
+    assert u.user_profile.id
+    assert u.pets
+    assert u.groups
 
 
 @pytest.mark.asyncio
@@ -744,6 +764,7 @@ async def test_schema():
     # wrong index
 
     with pytest.raises(danio.SchemaException):
+
         @danio.model
         class UserBackpack3(BaseUserBackpack):
             user_id: typing.Annotated[int, danio.IntField(name="user_id2")] = 0
@@ -828,14 +849,26 @@ async def test_manage():
         # TABLE NAME: user_profile2
         # TABLE IS NOT MIGRATED!
         ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-        NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+        NAME: typing.ClassVar[
+            danio.Field
+        ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
         AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-        CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-        UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+        CREATED_AT: typing.ClassVar[
+            danio.Field
+        ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+        UPDATED_AT: typing.ClassVar[
+            danio.Field
+        ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
         GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-        USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT 'user id'
-        LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT 'user level'
-        COINS: typing.ClassVar[danio.Field]  # `coins` int NOT NULL  COMMENT 'user coins'
+        USER_ID: typing.ClassVar[
+            danio.Field
+        ]  # `user_id` int NOT NULL  COMMENT 'user id'
+        LEVEL: typing.ClassVar[
+            danio.Field
+        ]  # `level` int NOT NULL  COMMENT 'user level'
+        COINS: typing.ClassVar[
+            danio.Field
+        ]  # `coins` int NOT NULL  COMMENT 'user coins'
         # TABLE INDEX: (created_at)
         # TABLE INDEX: (updated_at)
         # --------------------Danio Hints--------------------

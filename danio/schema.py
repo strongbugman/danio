@@ -1,6 +1,6 @@
 from __future__ import annotations
-import asyncio
 
+import asyncio
 import copy
 import dataclasses
 import decimal
@@ -30,9 +30,14 @@ CASE_TV = typing.TypeVar("CASE_TV", bound="SQLCase")
 
 def join(*contents, delimiter=" ") -> str:
     return delimiter.join(tuple(filter(lambda c: c, contents)))
-  
+
+
 def V(value: typing.Any) -> str:
-    return sqlalchemy.text(':df').bindparams(df=value).compile(compile_kwargs={'literal_binds': True})
+    return (
+        sqlalchemy.text(":df")
+        .bindparams(df=value)
+        .compile(compile_kwargs={"literal_binds": True})
+    )
 
 
 @dataclasses.dataclass
@@ -103,7 +108,7 @@ class Field:
     def __truediv__(self, other: object) -> SQLExpression:
         return SQLExpression(field=self, values=[(SQLExpression.Operator.DIV, other)])
 
-    def contains(self, values: typing.Iterable) -> SQLExpression:
+    def contains(self, values: object) -> SQLExpression:
         if not values:
             raise ValueError("Empty values")
 
@@ -315,13 +320,15 @@ class Index:
 
 
 class RelationField(typing.Generic[T]):
-    def __init__(self, fetcher: typing.Callable[[T], typing.Any], auto: bool = False) -> None:
+    def __init__(
+        self, fetcher: typing.Callable[[T], typing.Any], auto: bool = False
+    ) -> None:
         self.fetcher = fetcher
         self.auto = auto
-    
+
     def set_model_name(self, model_name: str):
         self.model_name = model_name
-    
+
     async def load(self, instance: T) -> typing.Any:
         result = self.fetcher(instance)
         if asyncio.iscoroutine(result):
@@ -335,7 +342,9 @@ class Schema:
     name: str
     indexes: typing.List[Index] = dataclasses.field(default_factory=list)
     fields: typing.List[Field] = dataclasses.field(default_factory=list)
-    relation_fields: typing.List[RelationField] = dataclasses.field(default_factory=list)
+    relation_fields: typing.List[RelationField] = dataclasses.field(
+        default_factory=list
+    )
     abstracted: bool = False
 
     @utils.cached_property
@@ -533,9 +542,7 @@ class Migration:
                     f"ALTER TABLE {type.quote(self.schema.name)} ADD COLUMN {f.to_sql(type=type)}"
                 )
                 if not isinstance(f.default_value, f.NoDefault):
-                    sqls[
-                        -1
-                    ] += f" DEFAULT {V(f.to_database(f.default_value))}"
+                    sqls[-1] += f" DEFAULT {V(f.to_database(f.default_value))}"
                     if type != Database.Type.SQLITE:
                         sqls.append(
                             f"ALTER TABLE {type.quote(self.schema.name)} ALTER COLUMN {type.quote(f.name)} DROP DEFAULT"
@@ -694,7 +701,10 @@ class SQLExpression(SQLMarker):
         sql = f"{type.quote(self.field.name)}"
         for op, value in self.values:
             if op == self.Operator.IN:
-                sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
+                if isinstance(value, SQLMarker):
+                    sql += f" {op.value} ({self._parse(value, type=type)})"
+                else:
+                    sql += f" {op.value} ({', '.join(self._parse(v, type=type) for v in value)})"
             elif op == self.Operator.LK:
                 sql += f" {op.value} :{self.mark(value)}"
             elif isinstance(value, SQLExpression):
@@ -758,6 +768,7 @@ class Crud(BaseSQLBuilder):
     _force_indexes: typing.List[
         typing.Tuple[typing.Sequence[str], str]
     ] = dataclasses.field(default_factory=list)
+    _selected_fields: typing.List[Field] = dataclasses.field(default_factory=list)
 
     def where(
         self: CRUD_TV,
@@ -774,6 +785,10 @@ class Crud(BaseSQLBuilder):
         elif raw:
             self._raw_where = raw
 
+        return self
+
+    def select(self: CRUD_TV, *fields: Field) -> CRUD_TV:
+        self._selected_fields.extend(fields)
         return self
 
     def limit(self: CRUD_TV, n: int) -> CRUD_TV:
@@ -817,6 +832,9 @@ class Crud(BaseSQLBuilder):
         self._force_indexes.append((indexes, _for))
         return self
 
+    def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
+        return self.to_select_sql(type=type)[:-1]
+
     def to_select_sql(
         self,
         count=False,
@@ -826,9 +844,10 @@ class Crud(BaseSQLBuilder):
     ) -> str:
         assert self.schema
 
+        self._selected_fields.extend(fields)
         if not count:
             _ignore_fields = {f.name for f in ignore_fields}
-            sql = f"SELECT {', '.join(f'{type.quote(f.name)}' for f in fields or self.schema.fields if f.name not in _ignore_fields)} FROM {type.quote(self.schema.name)}"
+            sql = f"SELECT {', '.join(f'{type.quote(f.name)}' for f in self._selected_fields or self.schema.fields if f.name not in _ignore_fields)} FROM {type.quote(self.schema.name)}"
         else:
             sql = f"SELECT COUNT(*) FROM {type.quote(self.schema.name)}"
         if type == type.MYSQL:

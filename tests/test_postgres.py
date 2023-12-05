@@ -538,8 +538,8 @@ async def test_schema():
     assert not await danio.Schema.from_db(db, UserBackpack)
     # wrong index
 
-
     with pytest.raises(danio.SchemaException):
+
         @dataclasses.dataclass
         class UserBackpack3(BaseUserBackpack):
             id: typing.Annotated[int, danio.IntField(type="serial", primary=True)] = 0
