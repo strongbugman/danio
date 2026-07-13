@@ -33,14 +33,8 @@ test: install
 tag: install
 	git tag $(version) -m "Release of version $(version)"
 
-pypi_release: install
-	uv build
-	uv publish
-
-github_release:
-	git push && git push origin --tags
-
-release: tag github_release pypi_release
+release: tag
+	git push origin $(version)
 
 clean:
 	rm -rf .eggs *.egg-info dist build .pytest_cache .coverage .ruff_cache .venv
