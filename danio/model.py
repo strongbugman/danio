@@ -12,12 +12,8 @@ import typing
 import warnings
 from contextvars import ContextVar
 
-try:
-    from typing import dataclass_transform
-except ImportError:
-    from typing_extensions import dataclass_transform
-
 from databases.interfaces import Record
+from typing_extensions import dataclass_transform
 
 from . import exception, schema
 from .database import Database
@@ -261,7 +257,7 @@ class Model:
         new = await self.__class__.where(
             self.schema.primary_field == self.primary, database=database
         ).fetch_one(fields=fields)
-        for f in dataclasses.fields(self):
+        for f in dataclasses.fields(self):  # type: ignore[arg-type]
             setattr(self, f.name, getattr(new, f.name))
         return self
 
@@ -545,7 +541,7 @@ class Model:
         schema = Schema(name=cls.table_name)
         schema.abstracted = cls.table_abstracted
         # fields
-        for f in dataclasses.fields(cls):
+        for f in dataclasses.fields(cls):  # type: ignore[arg-type]
             if isinstance(f.default, Field):  # from dataclass default
                 f.default.model_name = f.name
                 if not f.default.name:
