@@ -74,7 +74,7 @@ class Field:
             self.type = self.TYPE
 
         if self.enum and not isinstance(self.default, self.enum):
-            self.default = list(self.enum)[0]
+            self.default = next(iter(self.enum))
 
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
@@ -406,9 +406,10 @@ class Schema:
     def sync_index_name(self: SCHEMA_TV, other: SCHEMA_TV) -> SCHEMA_TV:
         if self != other:
             raise ValueError("Not migrated!")
-        serialize = lambda idx: (
-            f"{idx.unique}_{'_'.join(sorted(f.name for f in idx.fields))}"
-        )
+
+        def serialize(idx):
+            return f"{idx.unique}_{'_'.join(sorted(f.name for f in idx.fields))}"
+
         indexes = {serialize(idx): idx for idx in other.indexes}
         for idx in self.indexes:
             idx.name = indexes[serialize(idx)].name

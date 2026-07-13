@@ -57,7 +57,12 @@ target-version = "py38"
 select = ["E", "F", "I", "N", "UP", "S", "B", "RUF"]
 ignore = [
     "S101",  # allow assert in tests and validation
+    "S311",  # pseudo-random generator is fine for non-cryptographic index suffixes / tests
+    "S608",  # raw SQL string formatting is how ORMs build queries
     "E501",  # let ruff format handle line wrapping, ignore lint error for unsafe strings
+    "N801",  # allow class_property/cached_property decorators to be lowercase
+    "N802",  # allow uppercase function helper V()
+    "N818",  # keep existing public Exception class names for API backward-compatibility
     "UP006", # keep typing.List/Dict for Python 3.8 compatibility
     "UP007", # keep typing.Optional/Union for Python 3.8 compatibility
     "UP045", # keep typing.Optional/Union for Python 3.8 compatibility

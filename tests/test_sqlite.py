@@ -113,8 +113,8 @@ async def test_sql():
     if (await db.fetch_all("select sqlite_version();"))[0][0] < "3.38":
         # test with 3.38+
         return
-    await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
-    await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().use_index([next(iter(User.schema.indexes)).name]).fetch_all()
+    await User.where().force_index([next(iter(User.schema.indexes)).name]).fetch_all()
     await User.where().ignore_index([]).fetch_all()
     # upset
     created, updated = await User.upsert(

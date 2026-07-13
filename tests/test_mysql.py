@@ -381,19 +381,19 @@ async def test_sql():
             u.name += "_updated"
             await u.save(fields=[User.NAME], database=db)
     # use index
-    await User.where().use_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().use_index([next(iter(User.schema.indexes)).name]).fetch_all()
     await (
         User.where()
         .use_index(
-            [list(User.schema.indexes)[0].name, list(User.schema.indexes)[0].name]
+            [next(iter(User.schema.indexes)).name, next(iter(User.schema.indexes)).name]
         )
         .fetch_all()
     )
-    await User.where().ignore_index([list(User.schema.indexes)[0].name]).fetch_all()
-    await User.where().force_index([list(User.schema.indexes)[0].name]).fetch_all()
+    await User.where().ignore_index([next(iter(User.schema.indexes)).name]).fetch_all()
+    await User.where().force_index([next(iter(User.schema.indexes)).name]).fetch_all()
     await (
         User.where()
-        .force_index([list(User.schema.indexes)[0].name], _for="FOR ORDER BY")
+        .force_index([next(iter(User.schema.indexes)).name], _for="FOR ORDER BY")
         .order_by(User.CREATED_AT)
         .fetch_all()
     )

@@ -520,17 +520,17 @@ class Model:
     # deprecation
     @classmethod
     async def count(cls, *args, **kwargs):
-        warnings.warn("Will discard", DeprecationWarning)
+        warnings.warn("Will discard", DeprecationWarning, stacklevel=2)
         return await cls.where(*args, **kwargs).fetch_count()
 
     @classmethod
     async def select(cls, *args, **kwargs):
-        warnings.warn("Will discard", DeprecationWarning)
+        warnings.warn("Will discard", DeprecationWarning, stacklevel=2)
         return await cls.where(*args, **kwargs).fetch_all()
 
     @classmethod
     async def get(cls, *args, **kwargs):
-        warnings.warn("Will discard", DeprecationWarning)
+        warnings.warn("Will discard", DeprecationWarning, stacklevel=2)
         return await cls.where(*args, **kwargs).fetch_one()
 
     @classmethod

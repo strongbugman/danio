@@ -10,7 +10,7 @@ class SQLiteConnection(sqlite.SQLiteConnection):
     async def execute(self, query: sqlite.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            query, args, context = self._compile(query)
+            query, args, _context = self._compile(query)
             async with self._connection.cursor() as cursor:
                 await cursor.execute(query, args)
                 return cursor.lastrowid, cursor.rowcount

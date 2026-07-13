@@ -10,7 +10,7 @@ class MySQLConnection(mysql.MySQLConnection):
     async def execute(self, query: mysql.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            query, args, context = self._compile(query)
+            query, args, _context = self._compile(query)
             cursor = await self._connection.cursor()
             try:
                 await cursor.execute(query, args)

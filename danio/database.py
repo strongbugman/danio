@@ -18,7 +18,7 @@ class Database(_Database):
 
             return f"{qt}{content}{qt}"
 
-    SUPPORTED_BACKENDS = {
+    SUPPORTED_BACKENDS = {  # noqa: RUF012
         "mysql": "danio.mysql:MySQLBackend",
         "sqlite": "danio.sqlite:SQLiteBackend",
         "postgres": "danio.asyncpg:PostgresBackend",

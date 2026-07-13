@@ -10,7 +10,7 @@ class PostgresConnection(postgres.PostgresConnection):
     async def execute(self, query: postgres.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            query, args, result_columns = self._compile(query)
+            query, args, _result_columns = self._compile(query)
             data, _status, _d = await self._connection._execute(
                 query, args, 0, None, return_status=True
             )

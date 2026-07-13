@@ -46,7 +46,7 @@ def find_classes(
                 models.union(find_classes(cls, package_paths))
     # get and sift ant class obj from modules
     for module in modules:
-        for name, obj in inspect.getmembers(module):
+        for _name, obj in inspect.getmembers(module):
             if isinstance(obj, type) and issubclass(obj, cls) and obj not in models:
                 models.add(obj)
 
