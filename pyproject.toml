@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "databases>=0.6.0"
+    "databases>=0.6.0,<0.7.0"
 ]
 
 [project.optional-dependencies]

@@ -12,8 +12,12 @@ import pytest_asyncio
 
 import danio
 
+mysql_password = os.getenv("MYSQL_PASSWORD", "letmein")
+mysql_host = os.getenv("MYSQL_HOST", "mysql")
+mysql_port = os.getenv("MYSQL_PORT", "3306")
+
 db = danio.Database(
-    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'mysql')}:3306/",
+    f"mysql://root:{mysql_password}@{mysql_host}:{mysql_port}/",
     maxsize=2,
     charset="utf8mb4",
     use_unicode=True,
@@ -21,7 +25,7 @@ db = danio.Database(
     echo=True,
 )
 read_db = danio.Database(
-    f"mysql://root:{os.getenv('MYSQL_PASSWORD', 'letmein')}@{os.getenv('MYSQL_HOST', 'mysql')}:3306/",
+    f"mysql://root:{mysql_password}@{mysql_host}:{mysql_port}/",
     maxsize=2,
     charset="utf8mb4",
     use_unicode=True,
@@ -54,7 +58,7 @@ class UserProfile(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: user_id_5589_uiq(user_id)
+    # TABLE UNIQUE INDEX: user_id_7168_uiq(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     level: typing.Annotated[int, danio.IntField] = 0
@@ -81,7 +85,7 @@ class Pet(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT ''
     NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT ''
-    # TABLE INDEX: user_id_8578_idx(user_id)
+    # TABLE INDEX: user_id_4116_idx(user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.IntField] = 0
     name: typing.Annotated[str, danio.CharField()] = ""
@@ -110,7 +114,7 @@ class UserGroup(BaseModel):
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
     USER_ID: typing.ClassVar[danio.Field]  # `user_id` bigint NOT NULL  COMMENT ''
     GROUP_ID: typing.ClassVar[danio.Field]  # `group_id` bigint NOT NULL  COMMENT ''
-    # TABLE UNIQUE INDEX: group_id_user_i_9715_uiq(group_id,user_id)
+    # TABLE UNIQUE INDEX: group_id_user_i_1871_uiq(group_id,user_id)
     # --------------------Danio Hints--------------------
     user_id: typing.Annotated[int, danio.BigIntField()] = 0
     group_id: typing.Annotated[int, danio.BigIntField()] = 0
@@ -126,19 +130,13 @@ class User(BaseModel):
     # TABLE NAME: user
     # TABLE IS MIGRATED!
     ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-    NAME: typing.ClassVar[
-        danio.Field
-    ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+    NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
     AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-    CREATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-    UPDATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+    CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+    UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
     GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-    # TABLE INDEX: created_at_1644_idx(created_at)
-    # TABLE INDEX: updated_at_9608_idx(updated_at)
+    # TABLE INDEX: created_at_3147_idx(created_at)
+    # TABLE INDEX: updated_at_8671_idx(updated_at)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -849,26 +847,14 @@ async def test_manage():
         # TABLE NAME: user_profile2
         # TABLE IS NOT MIGRATED!
         ID: typing.ClassVar[danio.Field]  # `id` int NOT NULL AUTO_INCREMENT COMMENT ''
-        NAME: typing.ClassVar[
-            danio.Field
-        ]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
+        NAME: typing.ClassVar[danio.Field]  # `name` varchar(255) NOT NULL  COMMENT 'User name'
         AGE: typing.ClassVar[danio.Field]  # `age` int NOT NULL  COMMENT ''
-        CREATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # `created_at` datetime NOT NULL  COMMENT 'when created'
-        UPDATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
+        CREATED_AT: typing.ClassVar[danio.Field]  # `created_at` datetime NOT NULL  COMMENT 'when created'
+        UPDATED_AT: typing.ClassVar[danio.Field]  # `updated_at` datetime NOT NULL  COMMENT 'when updated'
         GENDER: typing.ClassVar[danio.Field]  # `gender` int NOT NULL  COMMENT ''
-        USER_ID: typing.ClassVar[
-            danio.Field
-        ]  # `user_id` int NOT NULL  COMMENT 'user id'
-        LEVEL: typing.ClassVar[
-            danio.Field
-        ]  # `level` int NOT NULL  COMMENT 'user level'
-        COINS: typing.ClassVar[
-            danio.Field
-        ]  # `coins` int NOT NULL  COMMENT 'user coins'
+        USER_ID: typing.ClassVar[danio.Field]  # `user_id` int NOT NULL  COMMENT 'user id'
+        LEVEL: typing.ClassVar[danio.Field]  # `level` int NOT NULL  COMMENT 'user level'
+        COINS: typing.ClassVar[danio.Field]  # `coins` int NOT NULL  COMMENT 'user coins'
         # TABLE INDEX: (created_at)
         # TABLE INDEX: (updated_at)
         # --------------------Danio Hints--------------------

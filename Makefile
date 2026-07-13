@@ -1,5 +1,13 @@
 all: test
 
+# Database Test Environment Variables
+export MYSQL_PASSWORD = letmein
+export MYSQL_HOST = 192.168.2.4
+export MYSQL_PORT = 3306
+export POSTGRES_PASSWORD = letmein
+export POSTGRES_HOST = 192.168.2.4
+export POSTGRES_PORT = 5432
+
 version = `python -c 'import pkg_resources; print(pkg_resources.get_distribution("danio").version)'`
 
 .PHONY: install lint format test tag pypi_release github_release release clean

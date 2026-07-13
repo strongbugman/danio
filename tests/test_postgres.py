@@ -12,25 +12,29 @@ import pytest_asyncio
 
 import danio
 
+postgres_password = os.getenv("POSTGRES_PASSWORD", "letmein")
+postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+postgres_port = os.getenv("POSTGRES_PORT", "5432")
+
 db_name = "test_danio"
 db = danio.Database(
-    f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
+    f"postgres://postgres:{postgres_password}@{postgres_host}:{postgres_port}/{db_name}",
     min_size=1,
     max_size=3,
     max_inactive_connection_lifetime=60,
 )
 read_db = danio.Database(
-    f"postgres://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
+    f"postgres://postgres:{postgres_password}@{postgres_host}:{postgres_port}/{db_name}",
     min_size=1,
     max_size=3,
 )
 db2 = danio.Database(
-    f"aiopg://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
+    f"aiopg://postgres:{postgres_password}@{postgres_host}:{postgres_port}/{db_name}",
     min_size=1,
     max_size=3,
 )
 read_db2 = danio.Database(
-    f"aiopg://postgres:{os.getenv('POSTGRES_PASSWORD', 'letmein')}@{os.getenv('POSTGRES_HOST', 'postgres')}:5432/{db_name}",
+    f"aiopg://postgres:{postgres_password}@{postgres_host}:{postgres_port}/{db_name}",
     min_size=1,
     max_size=3,
 )
@@ -47,12 +51,8 @@ class User(danio.Model):
     ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
     NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL
     AGE: typing.ClassVar[danio.Field]  # "age" int  NOT NULL
-    CREATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # "created_at" timestamp without time zone  NOT NULL
-    UPDATED_AT: typing.ClassVar[
-        danio.Field
-    ]  # "updated_at" timestamp without time zone  NOT NULL
+    CREATED_AT: typing.ClassVar[danio.Field]  # "created_at" timestamp without time zone  NOT NULL
+    UPDATED_AT: typing.ClassVar[danio.Field]  # "updated_at" timestamp without time zone  NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # "gender" int  NOT NULL
     # --------------------Danio Hints--------------------
 
@@ -628,12 +628,8 @@ async def test_manage():
         ID: typing.ClassVar[danio.Field]  # "id" serial PRIMARY KEY NOT NULL
         NAME: typing.ClassVar[danio.Field]  # "name" varchar(255)  NOT NULL
         AGE: typing.ClassVar[danio.Field]  # "age" int  NOT NULL
-        CREATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # "created_at" timestamp without time zone  NOT NULL
-        UPDATED_AT: typing.ClassVar[
-            danio.Field
-        ]  # "updated_at" timestamp without time zone  NOT NULL
+        CREATED_AT: typing.ClassVar[danio.Field]  # "created_at" timestamp without time zone  NOT NULL
+        UPDATED_AT: typing.ClassVar[danio.Field]  # "updated_at" timestamp without time zone  NOT NULL
         GENDER: typing.ClassVar[danio.Field]  # "gender" int  NOT NULL
         USER_ID: typing.ClassVar[danio.Field]  # "user_id" int  NOT NULL
         COINS: typing.ClassVar[danio.Field]  # "coins" int  NOT NULL

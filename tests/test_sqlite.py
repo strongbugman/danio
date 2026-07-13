@@ -19,12 +19,12 @@ class User(danio.Model):
     # --------------------Danio Hints--------------------
     # TABLE NAME: user
     # TABLE IS MIGRATED!
-    ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT
+    ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT 
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_3693_idx(name)
-    # TABLE UNIQUE INDEX: name_id_6593_uiq(name,id)
+    # TABLE INDEX: name_792_idx(name)
+    # TABLE UNIQUE INDEX: name_id_9083_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -343,7 +343,7 @@ async def test_migrate():
         # --------------------Danio Hints--------------------
         # TABLE NAME: user_profile
         # TABLE IS NOT MIGRATED!
-        ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT
+        ID: typing.ClassVar[danio.Field]  # `id` INTEGER PRIMARY KEY AUTOINCREMENT 
         NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
         AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
         GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
