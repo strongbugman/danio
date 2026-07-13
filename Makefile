@@ -30,5 +30,8 @@ test: install
 	uv run mypy --ignore-missing-imports danio
 	uv run pytest --cov danio --cov-report term-missing tests/
 
+test-all: install
+	uv run --with nox --with nox-uv nox
+
 clean:
 	rm -rf .eggs *.egg-info dist build .pytest_cache .coverage .ruff_cache .venv

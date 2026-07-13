@@ -12,11 +12,13 @@ import pytest_asyncio
 
 import danio
 
+import sys
+
 postgres_password = os.getenv("POSTGRES_PASSWORD", "letmein")
 postgres_host = os.getenv("POSTGRES_HOST", "postgres")
 postgres_port = os.getenv("POSTGRES_PORT", "5432")
 
-db_name = "test_danio"
+db_name = f"test_danio_{sys.version_info.major}_{sys.version_info.minor}"
 db = danio.Database(
     f"postgres://postgres:{postgres_password}@{postgres_host}:{postgres_port}/{db_name}",
     min_size=1,

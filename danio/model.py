@@ -12,6 +12,11 @@ import typing
 import warnings
 from contextvars import ContextVar
 
+try:
+    from typing import dataclass_transform
+except ImportError:
+    from typing_extensions import dataclass_transform
+
 from databases.interfaces import Record
 
 from . import exception, schema
@@ -31,7 +36,7 @@ MODEL_TV = typing.TypeVar("MODEL_TV", bound="Model")
 SQLCHAIN_TV = typing.TypeVar("SQLCHAIN_TV", bound="SqlChain")
 
 
-@typing.dataclass_transform()
+@dataclass_transform()
 def model(cls: typing.Type[MODEL_TV]) -> typing.Type[MODEL_TV]:
     cls = dataclasses.dataclass(cls)
     cls.schema = cls.get_schema()
