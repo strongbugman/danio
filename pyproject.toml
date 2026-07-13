@@ -56,8 +56,10 @@ target-version = "py38"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "S", "B", "RUF"]
 ignore = [
-    "S101", # allow assert in tests and validation
-    "UP007", # allow old-style Union syntax for backward compatibility with 3.8/3.9
+    "S101",  # allow assert in tests and validation
+    "UP006", # keep typing.List/Dict for Python 3.8 compatibility
+    "UP007", # keep typing.Optional/Union for Python 3.8 compatibility
+    "UP045", # keep typing.Optional/Union for Python 3.8 compatibility
 ]
 
 [tool.ruff.format]
