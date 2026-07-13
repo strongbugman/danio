@@ -30,11 +30,5 @@ test: install
 	uv run mypy --ignore-missing-imports danio
 	uv run pytest --cov danio --cov-report term-missing tests/
 
-tag: install
-	git tag $(version) -m "Release of version $(version)"
-
-release: tag
-	git push origin $(version)
-
 clean:
 	rm -rf .eggs *.egg-info dist build .pytest_cache .coverage .ruff_cache .venv
