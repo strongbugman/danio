@@ -1,19 +1,20 @@
 import typing
 
 import aiomysql
+import sqlalchemy
 from databases.backends import mysql
 
 from . import exception
 
 
 class MySQLConnection(mysql.MySQLConnection):
-    async def execute(self, query: mysql.ClauseElement) -> typing.Any:
+    async def execute(self, query: sqlalchemy.sql.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            query, args, _context = self._compile(query)
+            _query, args, _context = self._compile(query)
             cursor = await self._connection.cursor()
             try:
-                await cursor.execute(query, args)
+                await cursor.execute(_query, args)
                 return (cursor.lastrowid, cursor.rowcount)
             finally:
                 await cursor.close()

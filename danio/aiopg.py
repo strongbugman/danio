@@ -1,20 +1,21 @@
 import typing
 
 import psycopg2
+import sqlalchemy
 from databases.backends import aiopg
 
 from . import exception
 
 
 class PostgresConnection(aiopg.AiopgConnection):
-    async def execute(self, query: aiopg.ClauseElement) -> typing.Any:
+    async def execute(self, query: sqlalchemy.sql.ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            query, args, _context = self._compile(query)
+            _query, args, _context = self._compile(query)
             cursor = await self._connection.cursor()
             try:
-                await cursor.execute(query, args)
-                if "RETURNING id" in query:
+                await cursor.execute(_query, args)
+                if "RETURNING id" in _query:
                     lastrowid = (await cursor.fetchall())[-1][0]
                 else:
                     lastrowid = 0
