@@ -1,12 +1,12 @@
 all: test
 
 # Database Test Environment Variables
-export MYSQL_PASSWORD = letmein
-export MYSQL_HOST = 192.168.2.4
-export MYSQL_PORT = 3306
-export POSTGRES_PASSWORD = letmein
-export POSTGRES_HOST = 192.168.2.4
-export POSTGRES_PORT = 5432
+export MYSQL_PASSWORD ?= letmein
+export MYSQL_HOST ?= 192.168.2.4
+export MYSQL_PORT ?= 3306
+export POSTGRES_PASSWORD ?= letmein
+export POSTGRES_HOST ?= 192.168.2.4
+export POSTGRES_PORT ?= 5432
 
 version = $(shell python3 -c 'import re; print(re.search(r"version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read()).group(1))')
 
