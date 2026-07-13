@@ -32,7 +32,7 @@ def join(*contents, delimiter=" ") -> str:
 
 def V(value: typing.Any) -> str:
     return str(
-        sqlalchemy.text(":df")
+        sqlalchemy.sql.expression.text(":df")
         .bindparams(df=value)
         .compile(compile_kwargs={"literal_binds": True})
     )
