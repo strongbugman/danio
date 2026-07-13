@@ -1,14 +1,14 @@
 import typing
 
 import aiosqlite
-import sqlalchemy
 from databases.backends import sqlite
+from sqlalchemy.sql import ClauseElement
 
 from . import exception
 
 
 class SQLiteConnection(sqlite.SQLiteConnection):
-    async def execute(self, query: sqlalchemy.sql.ClauseElement) -> typing.Any:
+    async def execute(self, query: ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
             _query, args, _context = self._compile(query)
