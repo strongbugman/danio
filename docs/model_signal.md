@@ -22,7 +22,7 @@ Special signal:
 eg:
 ```python
 count = 0
-@dataclasses.dataclass
+@danio.model
 class Pet(danio.Model):
     name: str = danio.field(danio.CharField)
     age: int = danio.field(danio.IntField)

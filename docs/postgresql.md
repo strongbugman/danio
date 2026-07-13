@@ -27,7 +27,7 @@ db2 = danio.Database(
 
 Danio use PostgreSQL's `serial` type as a auto increment field, so we should change Model's primary field define:
 ```python
-@dataclasses.dataclass
+@danio.model
 class BasePostgreSQLModel(danio.Model):
     id: int = danio.field(danio.IntField, primary=True, type="serial", comment="primary key")
 ```

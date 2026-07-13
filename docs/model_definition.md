@@ -25,7 +25,7 @@ eg:
 ```python
 import danio
 
-@dataclasses.dataclass
+@danio.model
 class Cat(danio.Model):
     id: int = danio.field(IntField, primary=True, auto_increment=True)
     name: str = danio.field(danio.CharField, comment="cat name")
@@ -45,11 +45,11 @@ We can define more detail by `danio.field` params:
 
 * Define a different name in database:
 
-    `name: str = danio.filed(danio.ChareField, name="name_in_database")`
+    `name: str = danio.field(danio.CharField, name="name_in_database")`
 
 * Define a custom type:
 
-    `name: str = danio.filed(danio.ChareField, type="varchar(16)")`
+    `name: str = danio.field(danio.CharField, type="varchar(16)")`
 
 * Define default value(Only affect model layer, **will not** set database field default'):
 
@@ -80,10 +80,10 @@ import typing
 import dataclasses
 import danio
 
-@dataclasses.dataclass
+@danio.model
 class Cat(danio.Model):
     id: typing.Annotated[int, danio.IntField(primary=True, auto_increment=True)] = 0
-    name: typing.Annotated[int, danio.CharField(comment="cat name")] = 0
+    name: typing.Annotated[str, danio.CharField(comment="cat name")] = ""
     age: typing.Annotated[int, danio.IntField] = 0
 ```
 
@@ -138,7 +138,7 @@ class User(danio.Model):
 Danio store index information in model's classvar `_table_*_keys`, eg:
 
 ```python
-@dataclasses.dataclass
+@danio.model
 class UserProfile(danio.Model):
     user_id: int = danio.field(danio.IntField)
     level: int = danio.field(danio.IntField)
@@ -155,7 +155,7 @@ or
 
 
 ```python
-@dataclasses.dataclass
+@danio.model
 class UserProfile(danio.Model):
     user_id: typing.Annotated[int, danio.IntField] = 0
     level: typing.Annotated[int, danio.IntField] = 0
@@ -183,7 +183,7 @@ KEY `level_user_id_231_idx` (`level`, `user_id`)
 
 Danio use dataclasses's way to inherit, we can define a base model first:
 ```python
-@dataclasses.dataclass
+@danio.model
 class Pet(danio.Model):
     name: str = danio.field(danio.CharField)
     age: int = danio.field(danio.IntField)
@@ -194,26 +194,26 @@ class Pet(danio.Model):
 `_table_abstracted=True` means no pet table in database.
 Then we inherit Pet:
 ```python
-@dataclasses.dataclass
+@danio.model
 class Cat(Pet):
     weight: int = danio.field(danio.IntField)
 ```
 So Cat has 4 field now: *id, name, age and weight*.We can disable or redefine a field:
 ```python
-@dataclasses.dataclass
+@danio.model
 class Dog(Pet):
     name: str = ""
     age: int = danio.field(danio.SmallIntField)
 ```
 Now Cat got 3 fields: *id, age, weight*.We can still use `name` variable as a normal dataclass's variable.And all Cat and Dog got same one index by field age.We can change this index too:
 ```python
-@dataclasses.dataclass
+@danio.model
 class Fish(Pet):
     _table_index_keys = ((Pet.name,),)
 ```
 Or add new one to the original index:
 ```python
-@dataclasses.dataclass
+@danio.model
 class Fish(Pet):
     _table_index_keys = Pet._table_index_keys + ((Pet.name,),)
 ```
@@ -251,7 +251,7 @@ db = danio.Database(
     connect_timeout=60,
 )
 
-@dataclasses.dataclass
+@danio.model
 class BaseModel(danio.Model):
     @classmethod
     def get_database(

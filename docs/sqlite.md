@@ -10,7 +10,7 @@ db = danio.Database("sqlite://test.db")
 
 We may need change danio's field type define to `INTEGER` for primary field:
 ```python
-@dataclasses.dataclass
+@danio.model
 class BaseSQLiteModel(danio.Model):
     id: int = danio.field(
         danio.IntField, primary=True, auto_increment=True, type="INTEGER"
