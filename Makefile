@@ -5,29 +5,29 @@ version = `python -c 'import pkg_resources; print(pkg_resources.get_distribution
 .PHONY: install lint format test tag pypi_release github_release release clean
 
 install:
-	poetry install
+	uv sync --all-extras
 
 lint:
-	poetry run ruff check danio tests
-	poetry run ruff format --check danio tests
-	poetry run mypy --ignore-missing-imports danio
+	uv run ruff check danio tests
+	uv run ruff format --check danio tests
+	uv run mypy --ignore-missing-imports danio
 
 format:
-	poetry run ruff check --fix danio tests
-	poetry run ruff format danio tests
+	uv run ruff check --fix danio tests
+	uv run ruff format danio tests
 
 test: install
-	poetry run ruff check danio tests
-	poetry run ruff format --check danio tests
-	poetry run mypy --ignore-missing-imports danio
-	poetry run pytest --cov danio --cov-report term-missing tests/
+	uv run ruff check danio tests
+	uv run ruff format --check danio tests
+	uv run mypy --ignore-missing-imports danio
+	uv run pytest --cov danio --cov-report term-missing tests/
 
 tag: install
 	git tag $(version) -m "Release of version $(version)"
 
 pypi_release: install
-	poetry build
-	poetry publish
+	uv build
+	uv publish
 
 github_release:
 	git push && git push origin --tags
@@ -35,4 +35,4 @@ github_release:
 release: tag github_release pypi_release
 
 clean:
-	rm -rf .eggs *.egg-info dist build .pytest_cache .coverage .ruff_cache
+	rm -rf .eggs *.egg-info dist build .pytest_cache .coverage .ruff_cache .venv
