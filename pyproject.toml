@@ -57,6 +57,7 @@ target-version = "py38"
 select = ["E", "F", "I", "N", "UP", "S", "B", "RUF"]
 ignore = [
     "S101",  # allow assert in tests and validation
+    "E501",  # let ruff format handle line wrapping, ignore lint error for unsafe strings
     "UP006", # keep typing.List/Dict for Python 3.8 compatibility
     "UP007", # keep typing.Optional/Union for Python 3.8 compatibility
     "UP045", # keep typing.Optional/Union for Python 3.8 compatibility
