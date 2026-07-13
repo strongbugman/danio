@@ -11,6 +11,7 @@ classifiers=[
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -29,9 +30,7 @@ pytest-asyncio = ">=0.18.0"
 pytest-cov = ">=2.5.1"
 aiomysql = ">=0.1.1"
 mypy = ">=0.910"
-flake8 = ">=3.9.2"
-isort = ">=5.9.2"
-black = ">=21.8b0"
+ruff = ">=0.1.0"
 types-PyMySQL = ">=1.0.2"
 mkdocs-material = ">=8.2.3"
 codecov = ">=2.1.12"
@@ -44,3 +43,18 @@ Markdown = ">=3.3.7"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "S", "B", "RUF"]
+ignore = [
+    "S101", # allow assert in tests and validation
+    "UP007", # allow old-style Union syntax for backward compatibility with 3.8/3.9
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

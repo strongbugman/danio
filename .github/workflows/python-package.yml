@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
-
 name: UnitTest
 
 on:
@@ -15,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     services:
       mariadb:
         image: mariadb:latest
@@ -25,7 +22,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: root
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
       postgres:
-        image: postgres
+        image: postgres:latest
         ports:
           - 5432:5432
         env:
@@ -37,18 +34,33 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+        cache: 'pip' # cache pip dependencies
+
+    - name: Install poetry
       run: |
         python -m pip install --upgrade pip
         pip install poetry
+
+    - name: Set up poetry cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pypoetry
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-
+
+    - name: Install dependencies
+      run: |
         poetry config virtualenvs.create false --local
         poetry install
-    - name: Test
+
+    - name: Run Tests and Lint
       env:
         MYSQL_HOST: "127.0.0.1"
         POSTGRES_HOST: "127.0.0.1"
@@ -56,5 +68,9 @@ jobs:
         POSTGRES_PASSWORD: "root"
       run: |
         make test
-        codecov
-        mkdocs gh-deploy --force
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
