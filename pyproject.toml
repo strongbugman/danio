@@ -52,6 +52,11 @@ include = ["danio*"]
 [tool.ruff]
 line-length = 88
 target-version = "py38"
+exclude = [
+    "tests/test_mysql.py",
+    "tests/test_postgres.py",
+    "tests/test_sqlite.py"
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "S", "B", "RUF"]
