@@ -326,7 +326,9 @@ class Model:
             )
             if not created:
                 setattr(self, self.schema.primary_field.model_name, ins.primary)
-                updated = await self.update(validate=validate, fields=update_fields)
+                updated = await self.update(
+                    validate=validate, fields=update_fields, database=database
+                )
                 ins = self
         return ins, created, updated
 
@@ -556,7 +558,8 @@ class Model:
                         if not meta.name:
                             meta.name = f.name
                             meta.__post_init__()
-                        meta.default = f.default
+                        if f.default is not dataclasses.MISSING:
+                            meta.default = f.default
                         schema.fields.append(meta)
                         setattr(cls, f.name, meta)
                         setattr(cls, f.name.upper(), meta)

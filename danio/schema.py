@@ -61,13 +61,11 @@ class Field:
 
     @property
     def default_value(self) -> typing.Any:
-        if self._default is self.NoDefault:
-            if callable(self.default):
-                self._default = self.default()
-            else:
-                self._default = copy.copy(self.default)
-
-        return self._default
+        if callable(self.default):
+            return self.default()
+        if self.default is self.NoDefault:
+            return self.NoDefault
+        return copy.copy(self.default)
 
     def __post_init__(self):
         if not self.type and self.TYPE:
@@ -78,6 +76,9 @@ class Field:
 
     def __eq__(self, other: typing.Any) -> SQLExpression:  # type: ignore[override]
         return SQLExpression(field=self, values=[(SQLExpression.Operator.EQ, other)])
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def __gt__(self, other: object) -> SQLExpression:
         return SQLExpression(field=self, values=[(SQLExpression.Operator.GT, other)])

@@ -23,8 +23,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_3456_idx(name)
-    # TABLE UNIQUE INDEX: name_id_9371_uiq(name,id)
+    # TABLE INDEX: name_5269_idx(name)
+    # TABLE UNIQUE INDEX: name_id_617_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -420,3 +420,43 @@ async def test_migrate():
     for m in danio.manage.get_models(["tests.test_sqlite"]):
         await danio.manage.write_model_hints(db, m)
         await danio.manage.show_model_define(db, m.schema.name)
+
+
+@pytest.mark.asyncio
+async def test_claude_review_bugfixes():
+    # 1. Test Bug #1: Field(default=...) is not ignored when using danio.field
+    @danio.model
+    class TestCat(danio.Model):
+        id: int = danio.field(danio.IntField, primary=True, auto_increment=True, type="INTEGER")
+        age: int = danio.field(danio.IntField, default=99, type="INTEGER")
+
+    cat = TestCat()
+    assert cat.age == 99  # Should correctly use default=99
+
+    # 1.1 Test Bug #1 Minor: Callable defaults are not memoized at class level
+    count = 0
+
+    def dynamic_default():
+        nonlocal count
+        count += 1
+        return count
+
+    @danio.model
+    class TestDog(danio.Model):
+        id: int = danio.field(danio.IntField, primary=True, auto_increment=True, type="INTEGER")
+        num: int = danio.field(danio.IntField, default=dynamic_default, type="INTEGER")
+
+    dog1 = TestDog()
+    assert dog1.num == 1
+    dog2 = TestDog()
+    assert dog2.num == 2  # Should be dynamically evaluated every time
+
+    # 2. Test Bug #2: Documented class-body field declaration API is fully fixed (hashable Field)
+    @danio.model
+    class TestBird(danio.Model):
+        id: int = danio.field(danio.IntField, primary=True, auto_increment=True, type="INTEGER")
+        name: str = danio.field(danio.CharField, default="pigeon", type="VARCHAR(255)")
+
+    bird = TestBird()
+    assert bird.name == "pigeon"
+    assert TestBird.schema.primary_field.name == "id"
