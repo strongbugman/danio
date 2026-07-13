@@ -8,7 +8,7 @@ export POSTGRES_PASSWORD = letmein
 export POSTGRES_HOST = 192.168.2.4
 export POSTGRES_PORT = 5432
 
-version = `python -c 'import pkg_resources; print(pkg_resources.get_distribution("danio").version)'`
+version = $(shell python3 -c 'import re; print(re.search(r"version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read()).group(1))')
 
 .PHONY: install lint format test tag pypi_release github_release release clean
 

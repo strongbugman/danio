@@ -1,3 +1,5 @@
+import importlib.metadata
+
 from . import manage
 from .database import Database
 from .exception import SchemaException, ValidateException
@@ -27,6 +29,11 @@ from .schema import (
     field,
 )
 
+try:
+    __version__ = importlib.metadata.version("danio")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.5.1"
+
 __all__ = (
     "BigIntField",
     "BlobField",
@@ -53,6 +60,7 @@ __all__ = (
     "TinyIntField",
     "V",
     "ValidateException",
+    "__version__",
     "field",
     "id_to_many",
     "id_to_one",
