@@ -242,7 +242,7 @@ class TimeField(Field):
 class DateField(Field):
     TYPE: typing.ClassVar[str] = "date"
 
-    default: typing.Callable = lambda: datetime.now().date()  # noqa
+    default: typing.Callable = lambda: datetime.now().date()
 
 
 @dataclasses.dataclass(eq=False)
@@ -406,8 +406,8 @@ class Schema:
     def sync_index_name(self: SCHEMA_TV, other: SCHEMA_TV) -> SCHEMA_TV:
         if self != other:
             raise ValueError("Not migrated!")
-        serialize = (
-            lambda idx: f"{idx.unique}_{'_'.join(sorted(f.name for f in idx.fields))}"
+        serialize = lambda idx: (
+            f"{idx.unique}_{'_'.join(sorted(f.name for f in idx.fields))}"
         )
         indexes = {serialize(idx): idx for idx in other.indexes}
         for idx in self.indexes:
@@ -727,7 +727,7 @@ class SQLCase(SQLMarker):
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.cases
         if type == type.POSTGRES:
-            cast_type = "\:\:" + self.cast_type  # noqa
+            cast_type = "\:\:" + self.cast_type
         else:
             cast_type = ""
 
@@ -757,15 +757,15 @@ class Crud(BaseSQLBuilder):
     _order_by_asc: typing.List[bool] = dataclasses.field(default_factory=list)
     _for_update: bool = False
     _for_share: bool = False
-    _use_indexes: typing.List[
-        typing.Tuple[typing.Sequence[str], str]
-    ] = dataclasses.field(default_factory=list)
-    _ignore_indexes: typing.List[
-        typing.Tuple[typing.Sequence[str], str]
-    ] = dataclasses.field(default_factory=list)
-    _force_indexes: typing.List[
-        typing.Tuple[typing.Sequence[str], str]
-    ] = dataclasses.field(default_factory=list)
+    _use_indexes: typing.List[typing.Tuple[typing.Sequence[str], str]] = (
+        dataclasses.field(default_factory=list)
+    )
+    _ignore_indexes: typing.List[typing.Tuple[typing.Sequence[str], str]] = (
+        dataclasses.field(default_factory=list)
+    )
+    _force_indexes: typing.List[typing.Tuple[typing.Sequence[str], str]] = (
+        dataclasses.field(default_factory=list)
+    )
     _selected_fields: typing.List[Field] = dataclasses.field(default_factory=list)
 
     def where(

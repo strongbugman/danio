@@ -63,7 +63,7 @@ async def write_model_hints(
     hints_flag = f"{'-' * 20}Danio Hints{'-' * 20}"
     # analyze
     lines, no = inspect.getsourcelines(Model)
-    with open(inspect.getsourcefile(Model), "r") as file:  # type: ignore
+    with open(inspect.getsourcefile(Model)) as file:  # type: ignore
         all_lines = file.readlines()
 
     start_index = 0
@@ -129,7 +129,7 @@ async def show_model_define(
     defines = ["@danio.model", f"class {table}(danio.Model):"]
     for field in schema.fields:
         defines.append(
-            f'  {field.name}: typing.Annotated[{field.default.__class__.__name__}, danio.{field.__class__.__name__}(type="{field.type}")] = {repr(field.default_value)}'
+            f'  {field.name}: typing.Annotated[{field.default.__class__.__name__}, danio.{field.__class__.__name__}(type="{field.type}")] = {field.default_value!r}'
         )
 
     print("\n".join(defines))

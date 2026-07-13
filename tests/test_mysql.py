@@ -492,27 +492,27 @@ async def test_field():
         ftint: typing.Annotated[int, danio.TinyIntField] = 0
         fbool: typing.Annotated[bool, danio.BoolField] = False
         ffloat: typing.Annotated[float, danio.FloatField] = 0
-        fdecimal: typing.Annotated[
-            decimal.Decimal, danio.DecimalField
-        ] = decimal.Decimal(0)
+        fdecimal: typing.Annotated[decimal.Decimal, danio.DecimalField] = (
+            decimal.Decimal(0)
+        )
         fchar: typing.Annotated[str, danio.CharField] = ""
         fbytes: typing.Annotated[bytes, danio.BlobField] = b""
         ftext: typing.Annotated[str, danio.TextField] = ""
-        ftime: typing.Annotated[
-            datetime.timedelta, danio.TimeField
-        ] = datetime.timedelta()
+        ftime: typing.Annotated[datetime.timedelta, danio.TimeField] = (
+            datetime.timedelta()
+        )
         fdate: typing.Annotated[datetime.date, danio.DateField] = dataclasses.field(
             default_factory=lambda: datetime.datetime.now().date()
         )
-        fdatetime: typing.Annotated[
-            datetime.datetime, danio.DateTimeField
-        ] = dataclasses.field(default_factory=datetime.datetime.now)
+        fdatetime: typing.Annotated[datetime.datetime, danio.DateTimeField] = (
+            dataclasses.field(default_factory=datetime.datetime.now)
+        )
         fjson1: typing.Annotated[typing.List[int], danio.JsonField] = dataclasses.field(
             default_factory=list
         )
-        fjson2: typing.Annotated[
-            typing.Dict[str, int], danio.JsonField
-        ] = dataclasses.field(default_factory=dict)
+        fjson2: typing.Annotated[typing.Dict[str, int], danio.JsonField] = (
+            dataclasses.field(default_factory=dict)
+        )
         fjson3: typing.Annotated[
             typing.Dict[str, int], danio.JsonField(type="json")
         ] = dataclasses.field(default_factory=dict)

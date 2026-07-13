@@ -16,7 +16,7 @@ class class_property(typing.Generic[TV]):
 
 class cached_property(typing.Generic[TV]):
     def __init__(self, func: typing.Callable[[typing.Any], TV]):
-        self.__doc__ = getattr(func, "__doc__")
+        self.__doc__ = func.__doc__
         self.func = func
 
     def __get__(self, obj, cls) -> TV:

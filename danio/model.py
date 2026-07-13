@@ -1,6 +1,7 @@
 """
 Base ORM model with CRUD
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -56,9 +57,9 @@ class Model:
     _table_unique_keys: typing.ClassVar[
         typing.Tuple[typing.Tuple[typing.Any, ...], ...]
     ] = tuple()
-    _table_abstracted: typing.ClassVar[
-        bool
-    ] = True  # do not impact subclass, default false for every child class except defined as true
+    _table_abstracted: typing.ClassVar[bool] = (
+        True  # do not impact subclass, default false for every child class except defined as true
+    )
 
     @class_property
     @classmethod
@@ -132,7 +133,7 @@ class Model:
             if f.enum:
                 if isinstance(value, enum.Enum):
                     value = value.value
-                if value not in set((c.value for c in f.enum)):
+                if value not in set(c.value for c in f.enum):
                     raise exception.ValidateException(
                         f"{self.__class__.__name__}.{f.model_name} value: {value} not in choices: {f.enum}"
                     )

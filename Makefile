@@ -13,7 +13,7 @@ lint:
 	uv run mypy --ignore-missing-imports danio
 
 format:
-	uv run ruff check --fix danio tests
+	-uv run ruff check --fix danio tests
 	uv run ruff format danio tests
 
 test: install
