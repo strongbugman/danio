@@ -2,7 +2,7 @@ import typing
 
 import psycopg2
 from databases.backends import aiopg
-from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.elements import ClauseElement
 
 from . import exception
 

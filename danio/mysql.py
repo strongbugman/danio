@@ -2,7 +2,7 @@ import typing
 
 import aiomysql
 from databases.backends import mysql
-from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.elements import ClauseElement
 
 from . import exception
 

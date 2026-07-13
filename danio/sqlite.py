@@ -2,7 +2,7 @@ import typing
 
 import aiosqlite
 from databases.backends import sqlite
-from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.elements import ClauseElement
 
 from . import exception
 

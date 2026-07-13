@@ -2,7 +2,7 @@ import typing
 
 import asyncpg
 from databases.backends import postgres
-from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.elements import ClauseElement
 
 from . import exception
 
