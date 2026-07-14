@@ -729,7 +729,7 @@ class SQLCase(SQLMarker):
     def to_sql(self, type: Database.Type = Database.Type.MYSQL) -> str:
         assert self.cases
         if type == type.POSTGRES:
-            cast_type = "\:\:" + self.cast_type
+            cast_type = r"\:\:" + self.cast_type
         else:
             cast_type = ""
 

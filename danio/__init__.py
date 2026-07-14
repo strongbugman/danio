@@ -29,10 +29,7 @@ from .schema import (
     field,
 )
 
-try:
-    __version__ = importlib.metadata.version("danio")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.5.1"
+__version__ = importlib.metadata.version("danio")
 
 __all__ = (
     "BigIntField",

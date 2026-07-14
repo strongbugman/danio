@@ -663,6 +663,9 @@ class Model:
                                 )
                             )
                 elif r[0] == "index":
+                    # SQLite auto-indexes have no SQL definition to parse.
+                    if r[4] is None:
+                        continue
                     fields = {f.name: f for f in schema.fields}
                     _names = field_name_pattern.findall(r[4])
                     index_fields = [fields[n] for n in _names[2:]]

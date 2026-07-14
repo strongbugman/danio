@@ -23,8 +23,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_4030_idx(name)
-    # TABLE UNIQUE INDEX: name_id_943_uiq(name,id)
+    # TABLE INDEX: name_2881_idx(name)
+    # TABLE UNIQUE INDEX: name_id_4781_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -330,6 +330,34 @@ async def test_schema():
     assert (
         len(await db.fetch_all(f"PRAGMA INDEX_LIST('{UserProfile.table_name}');")) == 3
     )
+
+
+@pytest.mark.asyncio
+async def test_get_db_schema_skips_sqlite_autoindex_for_text_primary_key():
+    @danio.model
+    class TextPrimaryKeyModel(danio.Model):
+        id: typing.Annotated[
+            str,
+            danio.CharField(primary=True, type="TEXT"),
+        ] = ""
+        name: typing.Annotated[str, danio.CharField(type="CHAR(255)")] = ""
+
+    async with db.connection() as connection:
+        async with connection._connection._connection.cursor() as cursor:
+            await cursor.executescript(TextPrimaryKeyModel.schema.to_sql(type=db.type))
+
+    auto_indexes = await db.fetch_all(
+        "SELECT name, sql FROM sqlite_schema "
+        f"WHERE type = 'index' AND tbl_name = '{TextPrimaryKeyModel.table_name}';"
+    )
+    assert any(
+        r[0].startswith("sqlite_autoindex") and r[1] is None for r in auto_indexes
+    )
+
+    schema = await TextPrimaryKeyModel.get_db_schema(db)
+
+    assert schema is not None
+    assert all(not idx.name.startswith("sqlite_autoindex") for idx in schema.indexes)
 
 
 @pytest.mark.asyncio
