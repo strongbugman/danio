@@ -11,7 +11,7 @@ class PostgresConnection(aiopg.AiopgConnection):
     async def execute(self, query: ClauseElement) -> typing.Any:
         try:
             assert self._connection is not None, "Connection is not acquired"
-            _query, args, _context = self._compile(query)
+            _query, args, *_ = self._compile(query)
             cursor = await self._connection.cursor()
             try:
                 await cursor.execute(_query, args)
