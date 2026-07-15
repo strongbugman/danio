@@ -23,8 +23,8 @@ class User(danio.Model):
     NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
     AGE: typing.ClassVar[danio.Field]  # `age` int   NOT NULL
     GENDER: typing.ClassVar[danio.Field]  # `gender` int   NOT NULL
-    # TABLE INDEX: name_2881_idx(name)
-    # TABLE UNIQUE INDEX: name_id_4781_uiq(name,id)
+    # TABLE INDEX: name_5724_idx(name)
+    # TABLE UNIQUE INDEX: name_id_2581_uiq(name,id)
     # --------------------Danio Hints--------------------
 
     class Gender(enum.Enum):
@@ -43,6 +43,18 @@ class User(danio.Model):
     _table_unique_keys = (("name", "id"),)
 
 
+@danio.model
+class SurfSpot(danio.Model):
+    # --------------------Danio Hints--------------------
+    # TABLE NAME: surf_spot
+    # TABLE IS MIGRATED!
+    ID: typing.ClassVar[danio.Field]  # `id` text PRIMARY KEY  
+    NAME: typing.ClassVar[danio.Field]  # `name` CHAR(255)   NOT NULL
+    # --------------------Danio Hints--------------------
+    id: typing.Annotated[str, danio.TextField(primary=True)] = ""
+    name: typing.Annotated[str, danio.CharField(type="CHAR(255)")] = ""
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def database():
     await db.connect()
@@ -52,6 +64,7 @@ async def database():
         async with db.connection() as connection:
             async with connection._connection._connection.cursor() as cursor:
                 await cursor.executescript(User.schema.to_sql(type=db.type))
+                await cursor.executescript(SurfSpot.schema.to_sql(type=db.type))
         await danio.manage.init(db, ["tests.test_sqlite"])
         yield db
     finally:
@@ -60,6 +73,20 @@ async def database():
         for f in glob.glob("./tests/*.db"):
             os.remove(f)
         await db.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_create_preserves_text_primary_key():
+    spot_id = "chiba_ichinomiya"
+    spot = SurfSpot(id=spot_id, name="Ichinomiya")
+
+    await spot.create()
+
+    assert spot.id == spot_id
+    fetched = await SurfSpot.where(SurfSpot.id == spot_id).fetch_one()
+    assert fetched
+    assert fetched.id == spot_id
+    assert fetched.name == "Ichinomiya"
 
 
 @pytest.mark.asyncio

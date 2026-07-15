@@ -70,6 +70,8 @@ class Field:
     def __post_init__(self):
         if not self.type and self.TYPE:
             self.type = self.TYPE
+        if self.type.strip().lower() in {"serial", "bigserial", "smallserial"}:
+            self.auto_increment = True
 
         if self.enum and not isinstance(self.default, self.enum):
             self.default = next(iter(self.enum))

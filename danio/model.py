@@ -176,11 +176,11 @@ class Model:
             database if database else self.__class__.get_database(Operation.CREATE)
         )
         data = self.dump(fields=fields, ignore_fields=ignore_fields)
-        if (
-            self.schema.primary_field.name in data
-            and not data[self.schema.primary_field.name]
-        ):
-            data.pop(self.schema.primary_field.name)
+        primary_field = self.schema.primary_field
+        primary_supplied = bool(getattr(self, primary_field.model_name))
+        if primary_field.name in data and not data[primary_field.name]:
+            data.pop(primary_field.name)
+        primary_omitted = primary_field.name not in data
         await self.before_create(validate=validate)
 
         builder = schema.Insert(
@@ -190,7 +190,8 @@ class Model:
         last_id = (
             await database.execute(builder.to_sql(database.type), builder._vars)
         )[0]
-        setattr(self, self.schema.primary_field.model_name, last_id)
+        if primary_field.auto_increment and primary_omitted and not primary_supplied:
+            setattr(self, primary_field.model_name, last_id)
         await self.after_create()
         return self
 
@@ -427,17 +428,7 @@ class Model:
         assert cls.schema.primary_field
         if not database:
             database = cls.get_database(Operation.CREATE)
-        if (
-            database.type != database.type.POSTGRES
-            and not cls.schema.primary_field.auto_increment
-        ):
-            raise exception.OperationException(
-                f"{cls}'s primary_field must be auto incremented!"
-            )
-        if (
-            database.type == database.type.POSTGRES
-            and "serial" not in cls.schema.primary_field.type
-        ):
+        if not cls.schema.primary_field.auto_increment:
             raise exception.OperationException(
                 f"{cls}'s primary_field must be auto incremented!"
             )
